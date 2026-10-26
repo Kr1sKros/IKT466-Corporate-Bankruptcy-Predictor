@@ -62,7 +62,6 @@ The project uses a simple `src/` layout without an additional project-package fo
 │   ├── raw/
 │   ├── processed/
 │   └── splits/
-├── notebooks/01_eda.ipynb
 ├── src/
 │   ├── data_loader.py            # Existing Kaggle download and CSV loading
 │   ├── preprocessing.py          # Label audit, company splits, imputation/scaling
@@ -85,19 +84,14 @@ The project uses a simple `src/` layout without an additional project-package fo
 │   ├── train_gru.py
 │   ├── compare_models.py
 │   └── compare_lookback.py         # GRU only, k = 1–5
-├── experiments/
-│   ├── 01_model_comparison.md
-│   └── 02_historical_data.md
 ├── tests/
 │   ├── test_preprocessing.py
 │   ├── test_sequences.py
 │   └── test_splits.py
-├── results/
-│   ├── figures/
-│   ├── metrics/
-│   └── models/
-├── report/notes.md
-└── presentation/notes.md
+└── results/
+    ├── figures/
+    ├── metrics/
+    └── models/
 ```
 
 Data and results directories contain tracked `.gitkeep` markers. Generated data,
@@ -136,7 +130,7 @@ are unresolved choices, not runnable defaults.
 ## 9. Planned implementation order
 
 1. Audit company IDs, years, and provided labels in `data_loader.py`,
-   `preprocessing.py`, `inspect_data.py`, and the EDA notebook.
+   `preprocessing.py`, and `inspect_data.py`.
 2. Implement reproducible company-disjoint splits and training-only preprocessing.
 3. Implement latest-year baseline inputs and aligned GRU histories; agree short
    history and missing-year policies and add meaningful tests.

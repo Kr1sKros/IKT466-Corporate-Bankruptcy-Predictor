@@ -6,6 +6,5 @@ torch
 matplotlib
 seaborn
 pyyaml
-jupyter
 pytest
 kagglehub>=1.0.2,<2.0
