@@ -1,0 +1,28 @@
+# Python and development environments
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Local data and generated artifacts: keep directory markers only
+/data/raw/*
+!/data/raw/.gitkeep
+/data/processed/*
+!/data/processed/.gitkeep
+/data/splits/*
+!/data/splits/.gitkeep
+/results/figures/*
+!/results/figures/.gitkeep
+/results/metrics/*
+!/results/metrics/.gitkeep
+/results/models/*
+!/results/models/.gitkeep

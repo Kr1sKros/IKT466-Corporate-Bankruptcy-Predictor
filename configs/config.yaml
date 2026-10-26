@@ -1,0 +1,61 @@
+# Planning template only. Null values must be resolved before experiments.
+random_seed: 42
+
+dataset:
+  handle: utkarshx27/american-companies-bankruptcy-prediction-dataset
+  path: data/raw/american_bankruptcy.csv  # Local input; downloader uses KaggleHub cache.
+  company_column: company_name
+  year_column: year
+  label_column: status_label
+  target_verified: false
+  # TODO: Verify event dates; failed/alive may be constant for each company.
+  target_definition: null
+
+prediction_horizon_years: 1
+lookback_windows: [1, 2, 3, 4, 5]
+
+split:
+  strategy: null  # TODO: Agree temporal cutoffs and company-overlap policy.
+  train_end_year: null
+  validation_end_year: null
+  test_end_year: null
+  company_overlap_policy: null
+  horizon_boundary_policy: null
+
+preprocessing:
+  missing_value_strategy: null
+  scaling_strategy: null
+  fit_on_training_only: true
+
+models:
+  logistic_regression:
+    C: null
+    max_iter: null
+    class_weight: null
+  xgboost:
+    n_estimators: null
+    max_depth: null
+    learning_rate: null
+    scale_pos_weight: null
+  gru:
+    hidden_size: null
+    num_layers: null
+
+training:
+  epochs: null
+  batch_size: null
+  learning_rate: null
+  early_stopping_patience: null
+
+evaluation:
+  primary_metrics: [precision, recall, f1, average_precision]
+  additional_metrics: [accuracy, roc_auc, confusion_matrix]
+  decision_threshold: null  # Select using validation data only.
+  identical_test_observations: true
+
+outputs:
+  processed_data: data/processed
+  splits: data/splits
+  figures: results/figures
+  metrics: results/metrics
+  models: results/models
