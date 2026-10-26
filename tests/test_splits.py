@@ -1,10 +1,10 @@
-"""Planned checks for temporal boundaries, company overlap policy, and leakage prevention."""
+"""Planned checks for company-disjoint partitions and reproducibility."""
 
 import pytest
 
 
-@pytest.mark.skip(reason="Pending target audit and agreed implementation contract.")
+@pytest.mark.skip(reason="Pending company-split implementation and agreed fractions.")
 def test_splits_contract() -> None:
-    """Verify temporal boundaries, company overlap policy, and leakage prevention."""
-    # TODO: Add small explicit fixtures and expected outputs once the contract is agreed.
-    raise NotImplementedError("Test contract is pending; this test must remain skipped.")
+    """Check disjoint company IDs, complete row coverage, and seed reproducibility."""
+    # TODO: Use companies with multiple years and assert no company crosses splits.
+    raise NotImplementedError("Test contract is pending; keep this test skipped.")

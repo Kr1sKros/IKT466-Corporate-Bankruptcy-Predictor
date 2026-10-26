@@ -14,18 +14,18 @@ if TYPE_CHECKING:
     import numpy as np
 
 def verify_target_labels(data: pd.DataFrame) -> dict[str, object]:
-    """Audit label meanings, within-company consistency, and event timing."""
+    """Audit provided company labels and consistency across annual observations."""
     # TODO: Check company/year uniqueness, label transitions, and source documentation.
-    raise NotImplementedError("Verify labels and prediction-target feasibility first.")
+    raise NotImplementedError("Provided-label audit is pending.")
 
 
 def split_dataset(
-    data: pd.DataFrame, *, strategy: str, seed: int = 42
+    data: pd.DataFrame, *, train_fraction: float, validation_fraction: float, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Return train, validation, and test partitions under an agreed protocol."""
-    # TODO: Define cutoffs, company overlap policy, and horizon-aware boundaries.
-    # Prevent future information and overlapping target windows leaking across splits.
-    raise NotImplementedError("Splitting strategy has not been agreed yet.")
+    """Partition by company with no company shared across train/validation/test."""
+    # TODO: Split unique company IDs, preserve every company's rows together,
+    # validate fractions, and agree class stratification. Save IDs for all models.
+    raise NotImplementedError("Company-level splitting is pending.")
 
 
 def fit_preprocessor(training_features: pd.DataFrame) -> object:

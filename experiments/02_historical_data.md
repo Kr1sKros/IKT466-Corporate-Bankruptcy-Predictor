@@ -1,29 +1,30 @@
-# Experiment 02: Historical financial data
+# Experiment 02: GRU history length
 
 Status: planned; no results available.
 
-Investigate whether multiple years improve prediction using 1, 2, 3, 4, and 5
-years of financial data for Logistic Regression, XGBoost, and GRU.
+Compare only the GRU at k = 1, 2, 3, 4, and 5 years. Logistic Regression, XGBoost,
+and MLP remain latest-year baselines in Experiment 01.
 
-## Protocol to agree
+## Planned protocol
 
-- Verify next-year target feasibility before constructing financial histories.
-- Require consecutive company years and align histories to the prediction year.
-- Keep the prediction horizon fixed at one year, subject to verified event timing.
-- Flatten histories for baseline models and retain temporal tensors for the GRU.
-- Use identical eligible test company/prediction-year observations across lookbacks
-  and models for the primary comparison; report exclusions and sample coverage.
-- Agree whether training cohorts are held constant; document this choice and any
-  secondary comparison using all eligible histories.
-- Keep split boundaries, preprocessing policy, tuning budgets, and threshold
-  selection rules consistent. Never use test scores for model selection.
+- Anchor each company's history at its latest observed year and add older years
+  backwards in time, as specified in the README. Document tensor order.
+- Use the provided company-level status label, not an assumed next-year outcome.
+- Agree handling of missing years and companies with insufficient history.
+- Reuse company-disjoint training, validation, and test split definitions.
+- Use identical eligible test companies across all five lookbacks for the main
+  comparison; report excluded companies, class balance, and sample coverage.
+- Agree whether training cohorts are held constant and document this choice.
+- Keep preprocessing, tuning budgets, and threshold selection policies consistent.
+- Never choose the preferred lookback using test performance.
 
-## Evaluation plan
+## Evaluation
 
-Primary metrics: precision, recall, F1, and average precision (the chosen PR-AUC
-summary). Report additional accuracy, ROC-AUC, and confusion matrices as useful.
-Plot measured performance versus lookback and discuss coverage limitations.
+Main metric: average precision (the chosen PR-AUC summary). Report precision,
+recall, and F1; include accuracy, ROC-AUC, and confusion matrices as context.
+Plot measured GRU performance versus history length and inspect false negatives
+and false positives.
 
 ## Results
 
-Pending implementation and actual experiments. No estimated or synthetic scores.
+Pending actual experiments. No estimated or synthetic scores.

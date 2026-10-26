@@ -15,6 +15,6 @@ def build_model(*, seed: int = 42, hyperparameters: dict[str, object] | None = N
 
 
 def train_model(model: XGBClassifier, features: np.ndarray, targets: np.ndarray) -> XGBClassifier:
-    """Fit the model on prepared training observations."""
+    """Fit the model on latest-year training features only."""
     # TODO: Implement training after target, splitting, and preprocessing are verified.
     raise NotImplementedError("Model training is pending.")

@@ -12,8 +12,13 @@ dynamic = ["dependencies"]
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["data_loader", "preprocessing", "sequences", "metrics", "evaluation", "visualization"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["models", "models.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

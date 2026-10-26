@@ -1,10 +1,10 @@
-"""Planned checks for consecutive histories, 1–5 lookbacks, and target alignment."""
+"""Planned checks for latest-year anchors and backwards GRU histories."""
 
 import pytest
 
 
-@pytest.mark.skip(reason="Pending target audit and agreed implementation contract.")
+@pytest.mark.skip(reason="Pending history construction and short-history policy.")
 def test_sequences_contract() -> None:
-    """Verify consecutive histories, 1–5 lookbacks, and target alignment."""
-    # TODO: Add small explicit fixtures and expected outputs once the contract is agreed.
-    raise NotImplementedError("Test contract is pending; this test must remain skipped.")
+    """Check 1–5-year order, labels, IDs, and matching baseline/GRU anchors."""
+    # TODO: Explicit annual fixtures; test latest-year-only baseline selection too.
+    raise NotImplementedError("Test contract is pending; keep this test skipped.")

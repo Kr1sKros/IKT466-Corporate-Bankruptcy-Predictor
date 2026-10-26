@@ -3,7 +3,7 @@
 
 def main() -> None:
     """Entry point reserved for the planned workflow."""
-    # TODO: Load configs/config.yaml and delegate to bankruptcy_ml modules.
+    # TODO: Load configs/config.yaml and delegate to shared modules in src/.
     raise NotImplementedError("Prepare and save data after target semantics and splitting are verified. Implementation is pending.")
 
 

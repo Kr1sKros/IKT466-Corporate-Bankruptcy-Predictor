@@ -1,6 +1,6 @@
 """Inspect raw data without modifying it or interpreting labels as future events."""
 
-from bankruptcy_ml.data_loader import download_dataset, load_data
+from data_loader import download_dataset, load_data
 
 
 def main() -> None:

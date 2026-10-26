@@ -24,6 +24,6 @@ def evaluate_predictions(
 def align_test_observations(
     predictions: dict[str, pd.DataFrame],
 ) -> dict[str, pd.DataFrame]:
-    """Align model predictions to identical company/prediction-year test IDs."""
+    """Align model predictions to identical company/anchor-year test IDs."""
     # TODO: Validate uniqueness and matching labels; document intersection coverage.
     raise NotImplementedError("Test-observation alignment is pending.")
