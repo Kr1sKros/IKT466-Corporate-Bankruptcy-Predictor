@@ -15,10 +15,27 @@ def evaluate_predictions(
     *,
     threshold: float,
 ) -> dict[str, object]:
-    """Evaluate aligned predictions using the shared metrics module."""
-    # TODO: Validate lengths/IDs and delegate all metric calculations to metrics.py.
-    # Choose thresholds on validation data and keep them fixed for test evaluation.
-    raise NotImplementedError("Shared evaluation is pending.")
+    """Evaluate vectors in observation row order, with a fixed threshold.
+
+    Each company must occur once at its final-year anchor. If a label column is
+    included, it must match y_true exactly. This checks positional alignment;
+    callers must join separately sourced predictions by company/anchor first.
+    """
+    import numpy as np
+    from metrics import compute_metrics
+
+    required = ['company_name', 'year']
+    if any(column not in observations for column in required):
+        raise ValueError("Observations require company_name and year columns")
+    if observations.columns.duplicated().any():
+        raise ValueError("Observation column names must be unique")
+    if observations[required].isna().any().any() or observations['company_name'].duplicated().any():
+        raise ValueError("Observation IDs must be non-null and companies unique")
+    if len(observations) != len(y_true):
+        raise ValueError("Observation IDs and labels must have matching lengths")
+    if 'label' in observations and not np.array_equal(observations['label'].to_numpy(), y_true):
+        raise ValueError("Observation labels do not match y_true")
+    return compute_metrics(y_true, y_score, threshold=threshold)
 
 
 def align_test_observations(
