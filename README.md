@@ -117,13 +117,16 @@ from data_loader import load_data
 from models.logistic_regression import build_model
 ```
 
-`main.py` delegates to the basic dataset inspection script. Inspection downloads
-into KaggleHub's cache and prints a preview; detailed auditing is still a TODO.
+`main.py` delegates to the dataset inspection script. Inspection downloads into
+KaggleHub's cache and saves a JSON audit; use `--path` for an existing local CSV.
+See [the real-data audit](docs/audits/README.md) for provenance, history gaps,
+source-version differences and the unresolved next-year target interpretation.
 The local CSV path in the config is separate from that cache. Run scripts from
 the repository root; future config loading should resolve paths with `pathlib`.
 
-Only downloading/loading is implemented. Model, preprocessing, evaluation, and
-plotting interfaces raise `NotImplementedError`; tests are explicitly skipped.
+Downloading/loading and shared schema/label/history auditing are implemented.
+Model training, splitting, transforms, evaluation, and plotting remain pending;
+audit tests are active and the three original contract tests remain skipped.
 No trained models or experimental results are included. Settings marked `null`
 are unresolved choices, not runnable defaults.
 

@@ -1,0 +1,190 @@
+{
+  "companies": 8971,
+  "companies_with_at_least_k_rows": {
+    "1": 8971,
+    "2": 8216,
+    "3": 7310,
+    "4": 6554,
+    "5": 5873
+  },
+  "companies_with_changing_labels": 0,
+  "companies_with_k_consecutive_years_ending_at_anchor": {
+    "1": 8971,
+    "2": 8078,
+    "3": 7101,
+    "4": 6298,
+    "5": 5600
+  },
+  "companies_with_year_gaps": 710,
+  "company_failed_prevalence": 0.06788540853862446,
+  "company_label_counts": {
+    "alive": 8362,
+    "failed": 609
+  },
+  "duplicate_company_years": 0,
+  "failed_preterminal_rows": 4611,
+  "gap_intervals": 810,
+  "history_length_counts": {
+    "1": 755,
+    "10": 265,
+    "11": 290,
+    "12": 295,
+    "13": 240,
+    "14": 194,
+    "15": 186,
+    "16": 168,
+    "17": 148,
+    "18": 158,
+    "19": 242,
+    "2": 906,
+    "20": 1172,
+    "3": 756,
+    "4": 681,
+    "5": 616,
+    "6": 573,
+    "7": 497,
+    "8": 427,
+    "9": 402
+  },
+  "missing_company_years_between_observations": 1851,
+  "missing_values_by_column": {
+    "X1": 0,
+    "X10": 0,
+    "X11": 0,
+    "X12": 0,
+    "X13": 0,
+    "X14": 0,
+    "X15": 0,
+    "X16": 0,
+    "X17": 0,
+    "X18": 0,
+    "X2": 0,
+    "X3": 0,
+    "X4": 0,
+    "X5": 0,
+    "X6": 0,
+    "X7": 0,
+    "X8": 0,
+    "X9": 0,
+    "company_name": 0,
+    "status_label": 0,
+    "year": 0
+  },
+  "provenance": {
+    "audited_at_utc": "2026-11-03T13:07:25.126697+00:00",
+    "csv_filename": "american_bankruptcy.csv",
+    "csv_sha256": "cff2c899a97ecd629415cb22f59186000e74e1c0a78cfae036c0a53025419b5e",
+    "csv_size_bytes": 11254588,
+    "dataset_handle": "utkarshx27/american-companies-bankruptcy-prediction-dataset",
+    "source_version_supplied_by_caller": "3"
+  },
+  "readme_comparison": {
+    "companies": {
+      "expected": 8971,
+      "observed": 8971
+    },
+    "failed_companies": {
+      "expected": 609,
+      "observed": 609
+    },
+    "rows": {
+      "expected": 78682,
+      "observed": 78682
+    },
+    "year_range": {
+      "expected": [
+        1999,
+        2018
+      ],
+      "observed": [
+        1999,
+        2018
+      ]
+    }
+  },
+  "readme_discrepancies": [],
+  "row_failed_prevalence": 0.06634300094049465,
+  "row_label_counts": {
+    "alive": 73462,
+    "failed": 5220
+  },
+  "rows": 78682,
+  "rows_by_year": {
+    "1999": 5308,
+    "2000": 5226,
+    "2001": 4897,
+    "2002": 4651,
+    "2003": 4417,
+    "2004": 4348,
+    "2005": 4205,
+    "2006": 4128,
+    "2007": 4009,
+    "2008": 3857,
+    "2009": 3743,
+    "2010": 3625,
+    "2011": 3513,
+    "2012": 3485,
+    "2013": 3484,
+    "2014": 3504,
+    "2015": 3354,
+    "2016": 3191,
+    "2017": 3014,
+    "2018": 2723
+  },
+  "target_timing_verified": false,
+  "terminal_year_by_status": {
+    "alive": {
+      "1999": 472,
+      "2000": 486,
+      "2001": 341,
+      "2002": 334,
+      "2003": 233,
+      "2004": 262,
+      "2005": 273,
+      "2006": 289,
+      "2007": 253,
+      "2008": 196,
+      "2009": 297,
+      "2010": 296,
+      "2011": 270,
+      "2012": 241,
+      "2013": 235,
+      "2014": 303,
+      "2015": 299,
+      "2016": 245,
+      "2017": 350,
+      "2018": 2687
+    },
+    "failed": {
+      "1999": 3,
+      "2000": 7,
+      "2001": 10,
+      "2002": 17,
+      "2003": 29,
+      "2004": 46,
+      "2005": 40,
+      "2006": 51,
+      "2007": 59,
+      "2008": 58,
+      "2009": 23,
+      "2010": 35,
+      "2011": 25,
+      "2012": 26,
+      "2013": 28,
+      "2014": 33,
+      "2015": 33,
+      "2016": 29,
+      "2017": 21,
+      "2018": 36
+    }
+  },
+  "timing_limitations": [
+    "Provided company status repeats across history; earlier failed-company rows are not automatically next-year positives.",
+    "No filing date or alive-company follow-up column is present in the expected schema; CSV checks alone cannot verify the terminal-year next-year outcome.",
+    "Absence of missing cells does not establish absence of publisher imputation or synthetic records."
+  ],
+  "year_range": [
+    1999,
+    2018
+  ]
+}

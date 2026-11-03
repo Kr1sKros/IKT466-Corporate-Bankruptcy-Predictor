@@ -6,8 +6,8 @@ bankruptcy target until event timing and label semantics have been verified.
 """
 
 from pathlib import Path
+import csv
 
-import kagglehub
 import pandas as pd
 
 
@@ -16,6 +16,8 @@ DATASET_HANDLE = "utkarshx27/american-companies-bankruptcy-prediction-dataset"
 
 def download_dataset() -> Path:
     """Download the Kaggle dataset and locate its CSV file."""
+    import kagglehub
+
     dataset_dir = Path(kagglehub.dataset_download(DATASET_HANDLE))
     csv_files = sorted(dataset_dir.rglob("*.csv"))
     if not csv_files:
@@ -34,4 +36,8 @@ def load_data(path: Path | None = None) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(f"Dataset not found: {path}")
 
+    with path.open(encoding='utf-8-sig', newline='') as stream:
+        header = next(csv.reader(stream), [])
+    if not header or len(header) != len(set(header)):
+        raise ValueError('CSV requires a nonempty header with unique column names')
     return pd.read_csv(path)
