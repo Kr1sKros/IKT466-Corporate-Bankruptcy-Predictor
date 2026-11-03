@@ -64,7 +64,8 @@ The project uses a simple `src/` layout without an additional project-package fo
 │   └── splits/
 ├── src/
 │   ├── data_loader.py            # Existing Kaggle download and CSV loading
-│   ├── preprocessing.py          # Label audit, company splits, imputation/scaling
+│   ├── validation.py             # Dataset validators and real-data audit
+│   ├── preprocessing.py          # Company splits, imputation/scaling
 │   ├── sequences.py              # Latest-year selection and GRU histories
 │   ├── metrics.py
 │   ├── evaluation.py
@@ -76,7 +77,7 @@ The project uses a simple `src/` layout without an additional project-package fo
 │       ├── mlp_model.py
 │       └── gru_model.py
 ├── scripts/
-│   ├── inspect_data.py
+│   ├── inspect_data.py           # Runs the audit, saves results/metrics/data_audit.json
 │   ├── prepare_data.py
 │   ├── train_logistic.py
 │   ├── train_xgboost.py
@@ -85,6 +86,7 @@ The project uses a simple `src/` layout without an additional project-package fo
 │   ├── compare_models.py
 │   └── compare_lookback.py         # GRU only, k = 1–5
 ├── tests/
+│   ├── test_validation.py
 │   ├── test_preprocessing.py
 │   ├── test_sequences.py
 │   └── test_splits.py
@@ -117,13 +119,15 @@ from data_loader import load_data
 from models.logistic_regression import build_model
 ```
 
-`main.py` delegates to the basic dataset inspection script. Inspection downloads
-into KaggleHub's cache and prints a preview; detailed auditing is still a TODO.
+`main.py` delegates to the dataset audit script. It downloads into KaggleHub's
+cache, runs every validator in `src/validation.py`, prints a summary and saves the
+full report to `results/metrics/data_audit.json` (see section 10).
 The local CSV path in the config is separate from that cache. Run scripts from
 the repository root; future config loading should resolve paths with `pathlib`.
 
-Only downloading/loading is implemented. Model, preprocessing, evaluation, and
-plotting interfaces raise `NotImplementedError`; tests are explicitly skipped.
+Downloading/loading and dataset validation are implemented. Model, preprocessing,
+evaluation, and plotting interfaces raise `NotImplementedError`; their tests are
+explicitly skipped.
 No trained models or experimental results are included. Settings marked `null`
 are unresolved choices, not runnable defaults.
 
@@ -143,3 +147,54 @@ model family fixed; the baseline-versus-GRU comparison changes both architecture
 and history, which should be discussed when interpreting improvements.
 Use feature branches and teammate-reviewed pull requests; record split decisions,
 experiment settings, dataset version, and contributions in tracked documentation.
+
+## 10. Data audit (issue #44)
+
+Run `python scripts/inspect_data.py` to reproduce. The script exits with an error
+on ambiguous records (duplicate company/years, labels that change within a
+company, infinite values, schema mismatches) or if the file checksum differs from
+`configs/config.yaml`. Optionally add `--publisher-csv <path>` with the
+publisher's CSV ([sowide/bankruptcy_dataset](https://github.com/sowide/bankruptcy_dataset),
+commit `8bcd8db`) to compare the two files.
+
+**Audited file:** Kaggle `utkarshx27/american-companies-bankruptcy-prediction-dataset`,
+version 3, `american_bankruptcy.csv`, SHA-256 `cff2c899…419b5e` (audited 2026-11-03).
+
+| Check | Result |
+|---|---|
+| Rows / companies / years | 78,682 / 8,971 / 1999–2018 (matches section 1) |
+| Failed companies | 609 (6.79% of companies); 5,220 failed rows (6.63% of rows) |
+| Missing, infinite, duplicate company/year | none |
+| Years per company | 1–20, median 7; 710 companies have gaps (1,851 missing years) |
+| Companies with *k* consecutive years ending at *t* | k=1: 8,971 (609 failed) · 2: 8,078 (594) · 3: 7,101 (564) · 4: 6,298 (514) · 5: 5,600 (476) |
+| Identical columns | `X9` and `X16` are identical in every row |
+
+**Findings that matter for the target (#45):**
+
+- `status_label` is a **company-level** label: it is the same in every year of a
+  company. 4,611 of the 5,220 failed rows are *not* the company's last year, so
+  earlier failed rows must not be used as t+1 positives. The CSV does not follow
+  the publisher's documented year-level convention ("fiscal year before the
+  filing is labelled bankrupt").
+- That the last year of a failed company is the year before its filing comes from
+  the publisher's documentation; the CSV cannot prove it. 36 failed companies end
+  in 2018, so their filing would fall outside the data.
+- 5,675 alive companies leave the panel before 2018 and 2,687 end in 2018; their
+  t+1 outcome is not observable in the CSV.
+
+**Kaggle file vs publisher:**
+
+- The publisher's README says 8,262 companies; both CSVs actually contain 8,971.
+- Same rows and identical labels, but the **X1–X18 names are reordered** between
+  the files. Kaggle → publisher: X1→X1, X2→X3, X3→X5, X4→X7, X5→X9, X6→X11,
+  X7→X13, X8→X15, X9→X14/X17, X10→X2, X11→X4, X12→X6, X13→X8, X14→X10,
+  X15→X12, X16→X14/X17, X17→X16, X18→X18 (the duplicated pair is X9/X16 in
+  Kaggle and X14/X17 in the publisher file). Feature meanings must therefore be
+  checked against the right file (#45).
+- In the publisher's CSV, 64.5% of values are exactly 1000× the Kaggle value (a
+  lost decimal point). About 23.8% of the publisher's year-over-year changes are
+  ~1000× jumps, against 0.06% in the Kaggle file, so we use the Kaggle file.
+- "No missing values" is confirmed in the CSV. "No synthetic or imputed values"
+  can only be taken from the publisher; the CSV shows no copied feature rows
+  within a company, which is consistent with it but not proof.
+
