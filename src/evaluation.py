@@ -31,11 +31,12 @@ def evaluate_predictions(
         raise ValueError("Observation column names must be unique")
     if observations[required].isna().any().any() or observations['company_name'].duplicated().any():
         raise ValueError("Observation IDs must be non-null and companies unique")
-    if len(observations) != len(y_true):
+    result = compute_metrics(y_true, y_score, threshold=threshold)
+    if len(observations) != result['n_observations']:
         raise ValueError("Observation IDs and labels must have matching lengths")
     if 'label' in observations and not np.array_equal(observations['label'].to_numpy(), y_true):
         raise ValueError("Observation labels do not match y_true")
-    return compute_metrics(y_true, y_score, threshold=threshold)
+    return result
 
 
 def align_test_observations(
