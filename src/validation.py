@@ -70,6 +70,11 @@ def validate_schema(data: pd.DataFrame) -> dict[str, Any]:
         raise DataValidationError(
             f"{int(data[COMPANY_COLUMN].isna().sum())} rows have no company ID"
         )
+    blank_ids = data[COMPANY_COLUMN].astype(str).str.strip().eq("")
+    if blank_ids.any():
+        raise DataValidationError(
+            f"{int(blank_ids.sum())} rows have an empty or whitespace-only company ID"
+        )
 
     years = data[YEAR_COLUMN]
     if not pd.api.types.is_numeric_dtype(years) or years.isna().any():
@@ -265,13 +270,18 @@ def compare_with_publisher(kaggle: pd.DataFrame, publisher: pd.DataFrame) -> dic
         suffixes=("_kaggle", "_publisher"), indicator=True,
     )
     both = merged[merged["_merge"] == "both"]
-    labels_equal = bool(
-        (both[f"{LABEL_COLUMN}_kaggle"] == both[f"{LABEL_COLUMN}_publisher"]).all()
+    comparison_possible = len(both) > 0
+    # With no shared company/year rows, "all equal" would be vacuously true;
+    # report None instead so the result is not mistaken for a real match.
+    labels_equal = (
+        bool((both[f"{LABEL_COLUMN}_kaggle"] == both[f"{LABEL_COLUMN}_publisher"]).all())
+        if comparison_possible
+        else None
     )
 
     column_mapping: dict[str, list[str]] = {}
     exact_cells = scaled_cells = total_cells = 0
-    for feature in FEATURE_COLUMNS:
+    for feature in FEATURE_COLUMNS if comparison_possible else []:
         k_values = both[f"{feature}_kaggle"].to_numpy(dtype=float)
         matches = []
         for candidate in FEATURE_COLUMNS:
@@ -293,9 +303,14 @@ def compare_with_publisher(kaggle: pd.DataFrame, publisher: pd.DataFrame) -> dic
         "rows_only_in_kaggle": int((merged["_merge"] == "left_only").sum()),
         "rows_only_in_publisher": int((merged["_merge"] == "right_only").sum()),
         "rows_in_both": len(both),
+        "comparison_possible": comparison_possible,
         "labels_identical": labels_equal,
         "kaggle_to_publisher_columns": column_mapping,
-        "same_column_names": all(column_mapping[f] == [f] for f in FEATURE_COLUMNS),
+        "same_column_names": (
+            all(column_mapping[f] == [f] for f in FEATURE_COLUMNS)
+            if comparison_possible
+            else None
+        ),
         "unmatched_kaggle_columns": [f for f, m in column_mapping.items() if not m],
         "matched_cells_equal": exact_cells,
         "matched_cells_publisher_1000x": scaled_cells,

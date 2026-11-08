@@ -125,3 +125,22 @@ def test_compare_with_publisher_finds_swapped_and_scaled_columns(clean):
     assert result["same_column_names"] is False
     assert result["matched_cells_publisher_1000x"] == len(clean)
     assert result["labels_identical"] is True
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t"])
+def test_schema_rejects_blank_company_ids(clean, blank):
+    frame = clean.copy()
+    frame.loc[0, "company_name"] = blank
+    with pytest.raises(DataValidationError, match="whitespace-only company ID"):
+        validate_schema(frame)
+
+
+def test_compare_with_publisher_reports_no_overlap(clean):
+    publisher = clean.rename(columns={"year": "fyear"})
+    publisher["fyear"] = publisher["fyear"] + 100
+    result = compare_with_publisher(clean, publisher)
+    assert result["rows_in_both"] == 0
+    assert result["comparison_possible"] is False
+    assert result["labels_identical"] is None
+    assert result["same_column_names"] is None
+    assert result["kaggle_to_publisher_columns"] == {}

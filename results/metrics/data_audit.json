@@ -1,0 +1,257 @@
+{
+  "provenance": {
+    "handle": "utkarshx27/american-companies-bankruptcy-prediction-dataset",
+    "kaggle_version": 3,
+    "file_name": "american_bankruptcy.csv",
+    "size_bytes": 11254588,
+    "sha256": "cff2c899a97ecd629415cb22f59186000e74e1c0a78cfae036c0a53025419b5e",
+    "audited_at": "2026-11-08T14:33:58+00:00"
+  },
+  "measured": {
+    "n_rows": 78682,
+    "n_companies": 8971,
+    "n_failed_companies": 609,
+    "failed_company_share": 0.067885,
+    "first_year": 1999,
+    "last_year": 2018
+  },
+  "schema": {
+    "columns": [
+      "company_name",
+      "status_label",
+      "year",
+      "X1",
+      "X2",
+      "X3",
+      "X4",
+      "X5",
+      "X6",
+      "X7",
+      "X8",
+      "X9",
+      "X10",
+      "X11",
+      "X12",
+      "X13",
+      "X14",
+      "X15",
+      "X16",
+      "X17",
+      "X18"
+    ],
+    "n_rows": 78682,
+    "n_columns": 21
+  },
+  "duplicates": {
+    "duplicate_company_years": 0,
+    "repeated_feature_rows_within_company": 0
+  },
+  "feature_values": {
+    "missing_values_total": 0,
+    "missing_values_per_column": {
+      "X1": 0,
+      "X2": 0,
+      "X3": 0,
+      "X4": 0,
+      "X5": 0,
+      "X6": 0,
+      "X7": 0,
+      "X8": 0,
+      "X9": 0,
+      "X10": 0,
+      "X11": 0,
+      "X12": 0,
+      "X13": 0,
+      "X14": 0,
+      "X15": 0,
+      "X16": 0,
+      "X17": 0,
+      "X18": 0
+    },
+    "infinite_values_total": 0,
+    "zero_values_per_column": {
+      "X2": 306,
+      "X3": 633,
+      "X4": 3,
+      "X5": 19701,
+      "X6": 7,
+      "X7": 2205,
+      "X11": 20884,
+      "X13": 25,
+      "X18": 1
+    },
+    "negative_values_per_column": {
+      "X1": 6,
+      "X2": 6,
+      "X4": 23012,
+      "X6": 34001,
+      "X7": 1,
+      "X9": 13,
+      "X11": 1,
+      "X12": 28498,
+      "X13": 6603,
+      "X15": 40277,
+      "X16": 13,
+      "X18": 3
+    },
+    "all_zero_feature_rows": 0
+  },
+  "identical_feature_columns": [
+    [
+      "X9",
+      "X16"
+    ]
+  ],
+  "labels": {
+    "labels_constant_within_company": true,
+    "label_granularity": "company",
+    "row_label_counts": {
+      "alive": 73462,
+      "failed": 5220
+    },
+    "failed_row_share": 0.066343,
+    "n_failed_companies": 609,
+    "n_alive_companies": 8362,
+    "failed_company_share": 0.067885,
+    "failed_rows_at_terminal_year": 609,
+    "failed_rows_before_terminal_year": 4611
+  },
+  "history": {
+    "first_year": 1999,
+    "last_year": 2018,
+    "rows_per_year": {
+      "1999": 5308,
+      "2000": 5226,
+      "2001": 4897,
+      "2002": 4651,
+      "2003": 4417,
+      "2004": 4348,
+      "2005": 4205,
+      "2006": 4128,
+      "2007": 4009,
+      "2008": 3857,
+      "2009": 3743,
+      "2010": 3625,
+      "2011": 3513,
+      "2012": 3485,
+      "2013": 3484,
+      "2014": 3504,
+      "2015": 3354,
+      "2016": 3191,
+      "2017": 3014,
+      "2018": 2723
+    },
+    "years_per_company": {
+      "min": 1,
+      "median": 7.0,
+      "mean": 8.771,
+      "max": 20
+    },
+    "companies_with_year_gaps": 710,
+    "missing_years_inside_company_spans": 1851,
+    "anchor_year_distribution_failed": {
+      "1999": 3,
+      "2000": 7,
+      "2001": 10,
+      "2002": 17,
+      "2003": 29,
+      "2004": 46,
+      "2005": 40,
+      "2006": 51,
+      "2007": 59,
+      "2008": 58,
+      "2009": 23,
+      "2010": 35,
+      "2011": 25,
+      "2012": 26,
+      "2013": 28,
+      "2014": 33,
+      "2015": 33,
+      "2016": 29,
+      "2017": 21,
+      "2018": 36
+    },
+    "anchor_year_distribution_alive": {
+      "1999": 472,
+      "2000": 486,
+      "2001": 341,
+      "2002": 334,
+      "2003": 233,
+      "2004": 262,
+      "2005": 273,
+      "2006": 289,
+      "2007": 253,
+      "2008": 196,
+      "2009": 297,
+      "2010": 296,
+      "2011": 270,
+      "2012": 241,
+      "2013": 235,
+      "2014": 303,
+      "2015": 299,
+      "2016": 245,
+      "2017": 350,
+      "2018": 2687
+    },
+    "alive_companies_ending_before_last_dataset_year": 5675,
+    "failed_companies_ending_at_last_dataset_year": 36,
+    "lookback_coverage": {
+      "1": {
+        "companies_with_at_least_k_rows": 8971,
+        "companies_with_k_consecutive_years_ending_at_anchor": 8971,
+        "failed_companies_with_k_consecutive_years": 609
+      },
+      "2": {
+        "companies_with_at_least_k_rows": 8216,
+        "companies_with_k_consecutive_years_ending_at_anchor": 8078,
+        "failed_companies_with_k_consecutive_years": 594
+      },
+      "3": {
+        "companies_with_at_least_k_rows": 7310,
+        "companies_with_k_consecutive_years_ending_at_anchor": 7101,
+        "failed_companies_with_k_consecutive_years": 564
+      },
+      "4": {
+        "companies_with_at_least_k_rows": 6554,
+        "companies_with_k_consecutive_years_ending_at_anchor": 6298,
+        "failed_companies_with_k_consecutive_years": 514
+      },
+      "5": {
+        "companies_with_at_least_k_rows": 5873,
+        "companies_with_k_consecutive_years_ending_at_anchor": 5600,
+        "failed_companies_with_k_consecutive_years": 476
+      }
+    }
+  },
+  "discrepancies_vs_readme": [],
+  "discrepancies_vs_publisher_documentation": [
+    {
+      "statistic": "n_companies",
+      "reference": 8262,
+      "measured": 8971
+    }
+  ],
+  "publisher_documentation": {
+    "source": "https://github.com/sowide/bankruptcy_dataset (commit 8bcd8db)",
+    "n_companies": 8262,
+    "n_rows": 78682,
+    "first_year": 1999,
+    "last_year": 2018,
+    "label_convention": "The fiscal year before a Chapter 7/11 filing is labelled bankrupt (1) 'for the next year'; otherwise the company is alive (0).",
+    "no_missing_synthetic_or_imputed_values": true
+  },
+  "verifiable_from_csv": {
+    "no_missing_values": true,
+    "no_infinite_values": true,
+    "no_duplicate_company_years": true,
+    "no_repeated_feature_rows_within_company": true,
+    "labels_follow_documented_year_level_convention": false,
+    "not_verifiable_from_csv": [
+      "whether values were synthetic or imputed by the publisher",
+      "that the terminal year of a failed company precedes its filing",
+      "the t+1 outcome of alive companies that leave the panel before the last year",
+      "the t+1 outcome of companies observed in the last dataset year"
+    ]
+  },
+  "checksum_matches_config": true
+}
