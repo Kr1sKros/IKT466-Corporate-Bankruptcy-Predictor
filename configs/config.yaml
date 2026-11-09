@@ -9,9 +9,19 @@ dataset:
   company_column: company_name
   year_column: year
   label_column: status_label
-  target_definition: provided_company_status
-  target_verified: false  # Labels audited in #44 (constant per company); target decided in #45.
-  # Company status does not imply a next-year bankruptcy event.
+  # Target (#45, README section 11): one observation per company at its last
+  # recorded year t; 1 if status_label == failed, else 0 (validation.anchor_targets).
+  # Intended meaning: Chapter 7/11 filing in t+1 (publisher convention).
+  target_definition: company_status_at_last_recorded_year
+  target_positive_label: failed
+  label_granularity: company  # status_label repeats in every year of a company.
+  # Not verifiable from the CSV: filing dates are absent and alive companies'
+  # t+1 is unobserved. Timing rests on publisher documentation.
+  target_verified: false
+  feature_dictionary: validation.FEATURE_DICTIONARY  # Kaggle v3 names, checked by accounting identities.
+  audit:
+    issues: [44, 45]
+    report: results/metrics/data_audit.json
 
 inputs:
   baseline_models: [logistic_regression, xgboost, mlp]

@@ -1,7 +1,7 @@
 """Download and load the original American Companies Bankruptcy dataset.
 
-Label semantics and timing are audited in ``validation.py`` (issue #44); the
-t+1 target definition is decided in issue #45.
+Label semantics, the feature dictionary and the t+1 target definition
+(``anchor_targets``) live in ``validation.py`` (issues #44 and #45).
 """
 
 import hashlib
