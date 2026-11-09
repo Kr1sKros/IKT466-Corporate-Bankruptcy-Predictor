@@ -1,5 +1,29 @@
 # IKT466 – Corporate Bankruptcy Predictor
 
+<!-- task-dashboard:start -->
+## Project progress
+
+**Finish by 22 November 2026 · 2/57 tasks complete (4%)**
+
+```mermaid
+%%{init: {"themeVariables": {"pie1": "#2da44e", "pie2": "#fb8c00", "pie3": "#9ca3af"}}}%%
+pie showData
+    title Project tasks
+    "Done" : 2
+    "Due today or overdue" : 8
+    "Due later" : 47
+```
+
+Counts exclude pull requests and parent issues to avoid counting work twice.
+Open tasks with a due date on or before today appear in **Due today or overdue**.
+Tasks without a deadline are also included there (0 currently).
+Deadlines use exact date labels such as `due:2026-11-09`.
+
+Updated 2026-11-09 (Europe/Oslo). Refreshes when issues change and daily.
+Plan: data preparation by **15 Nov**, model training by **16 Nov**, experiments by
+**20 Nov**, discussion and conclusions by **21 Nov**, final review by **22 Nov**.
+<!-- task-dashboard:end -->
+
 Project for the Introduction to Machine Learning course (IKT466) at UiA.
 
 We predict whether a US public company goes bankrupt from its yearly accounting data, and test whether a **GRU over multi-year financial history** beats models that only see the **latest year**.

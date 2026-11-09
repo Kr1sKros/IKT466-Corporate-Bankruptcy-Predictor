@@ -1,0 +1,49 @@
+name: Update task dashboard
+
+on:
+  issues:
+    types: [opened, closed, reopened, labeled, unlabeled, deleted, transferred]
+  schedule:
+    - cron: '17 23 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/update_dashboard.py
+      - .github/workflows/task-dashboard.yml
+
+permissions:
+  contents: write
+  issues: read
+
+concurrency:
+  group: task-dashboard
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify dashboard logic
+        run: python -m unittest discover -s tests -p test_dashboard.py
+      - name: Refresh dashboard
+        run: python scripts/update_dashboard.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Commit updated chart
+        run: |
+          if git diff --quiet -- README.md; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md
+          git commit -m 'docs: refresh task dashboard'
+          git push
