@@ -1,10 +1,11 @@
 """Download and load the original American Companies Bankruptcy dataset.
 
-TODO: Verify whether failed/alive labels are constant across each company's
-history. Do not interpret them as next-year outcomes or define a next-year
-bankruptcy target until event timing and label semantics have been verified.
+Label semantics and timing are audited in ``validation.py`` (issue #44); the
+t+1 target definition is decided in issue #45.
 """
 
+import hashlib
+from datetime import datetime, timezone
 from pathlib import Path
 
 import kagglehub
@@ -35,3 +36,17 @@ def load_data(path: Path | None = None) -> pd.DataFrame:
         raise FileNotFoundError(f"Dataset not found: {path}")
 
     return pd.read_csv(path)
+
+
+def dataset_provenance(path: Path) -> dict[str, object]:
+    """Describe the CSV file: source handle, Kaggle version, size and SHA-256."""
+    path = Path(path)
+    version = path.parent.name if path.parent.parent.name == "versions" else None
+    return {
+        "handle": DATASET_HANDLE,
+        "kaggle_version": int(version) if version and version.isdigit() else None,
+        "file_name": path.name,
+        "size_bytes": path.stat().st_size,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "audited_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }

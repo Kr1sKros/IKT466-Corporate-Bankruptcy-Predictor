@@ -4,11 +4,13 @@ random_seed: 42
 dataset:
   handle: utkarshx27/american-companies-bankruptcy-prediction-dataset
   path: data/raw/american_bankruptcy.csv  # Downloader uses KaggleHub cache instead.
+  kaggle_version: 3
+  sha256: cff2c899a97ecd629415cb22f59186000e74e1c0a78cfae036c0a53025419b5e  # Audited in #44.
   company_column: company_name
   year_column: year
   label_column: status_label
   target_definition: provided_company_status
-  target_verified: false  # TODO: Audit label values and consistency per company.
+  target_verified: false  # Labels audited in #44 (constant per company); target decided in #45.
   # Company status does not imply a next-year bankruptcy event.
 
 inputs:

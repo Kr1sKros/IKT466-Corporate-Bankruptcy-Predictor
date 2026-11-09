@@ -1,8 +1,7 @@
 """Preprocessing interfaces; implementation is pending.
 
-TODO: Verify whether failed/alive labels repeat across a company's entire
-history BEFORE defining any next-year bankruptcy target. Company-level failure
-status alone does not establish the failure year.
+Dataset validation (schema, duplicates, labels, history) lives in
+``validation.py``; this module only splits, imputes and scales.
 """
 
 from __future__ import annotations
@@ -12,12 +11,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pandas as pd
     import numpy as np
-
-def verify_target_labels(data: pd.DataFrame) -> dict[str, object]:
-    """Audit provided company labels and consistency across annual observations."""
-    # TODO: Check company/year uniqueness, label transitions, and source documentation.
-    raise NotImplementedError("Provided-label audit is pending.")
-
 
 def split_dataset(
     data: pd.DataFrame, *, train_fraction: float, validation_fraction: float, seed: int = 42
