@@ -28,17 +28,29 @@ inputs:
   baseline_years: 1
   anchor: latest_company_year
   gru_lookback_windows: [1, 2, 3, 4, 5]
-  gru_year_order: newest_to_oldest
-  short_history_policy: null
-  missing_year_policy: null
+  # GRU histories (#49-#51, README section 12):
+  window_selection: last_k_recorded_years  # Backwards from anchor t.
+  gru_year_order: oldest_to_newest  # Last real step is always t.
+  missing_year_policy: skip_gaps  # Calendar gaps are not filled.
+  short_history_policy: pad_end_and_pack  # Zero-pad after real steps; pack_padded_sequence.
+  evaluation_cohorts:
+    main: all_companies
+    sub_analysis: at_least_k_years
 
 split:
-  strategy: company_grouped
-  train_fraction: null
-  validation_fraction: null
-  test_fraction: null
-  stratify_by_company_label: null
+  strategy: company_grouped_stratified
+  train_fraction: 0.70
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  stratify_by: [target, history_group]  # history_group: recorded years 1, 2, 3, 4, 5+.
   allow_company_overlap: false
+  directory: data/splits  # Gitignored; created by scripts/prepare_data.py.
+  # Checksums of the files from seed 42; prepare_data.py and load_splits fail
+  # if a regenerated split differs.
+  sha256:
+    train: 22acdda6dcc0ddf4eb4970f330ee3da0c4e6a83f7953a7c71d40226a314ea8e6
+    validation: f7e793099162a55f24a82fdec0bca4a60da5c6ffeae93ac7d4865bfba02d5eb2
+    test: f4c9307d3ca500e6cb617a063f6b7d546b13cfcbc93504c00bc265d6c4bdc5fa
 
 preprocessing:
   missing_value_strategy: null

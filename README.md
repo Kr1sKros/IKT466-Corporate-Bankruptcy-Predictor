@@ -52,7 +52,7 @@ All baselines use only the company's latest year, so comparing them with the GRU
 
 ## 3. Neural model
 
-A GRU that reads a company's last *k* years of accounting data, starting from the latest year and adding years backwards in time.
+A GRU that reads a company's last *k* recorded years of accounting data. The years are selected backwards from the latest year and fed oldest to newest, so the last step is always the latest year (see section 12).
 
 ## 4. Investigations
 
@@ -132,6 +132,7 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
 python scripts/inspect_data.py
+python scripts/prepare_data.py   # creates data/splits/ (see section 12)
 python -m pytest
 ```
 
@@ -149,9 +150,9 @@ full report to `results/metrics/data_audit.json` (see section 10).
 The local CSV path in the config is separate from that cache. Run scripts from
 the repository root; future config loading should resolve paths with `pathlib`.
 
-Downloading/loading and dataset validation are implemented. Model, preprocessing,
-evaluation, and plotting interfaces raise `NotImplementedError`; their tests are
-explicitly skipped.
+Downloading/loading, dataset validation, company splits and GRU history
+construction are implemented. Scaling, models and plotting still raise
+`NotImplementedError`.
 No trained models or experimental results are included. Settings marked `null`
 are unresolved choices, not runnable defaults.
 
@@ -312,3 +313,65 @@ label is company-level; it does not prove the timing:
 
 So the target is "bankruptcy in *t*+1 according to the publisher", not an
 independently verified event. Results and the report should use that wording.
+
+## 12. Splits and GRU histories (issues #47, #49–#51)
+
+### Company split
+
+`python scripts/prepare_data.py` assigns every company, with all its years, to one
+partition and writes `data/splits/{train,validation,test}.csv` (gitignored). Each
+file stores the company's anchor year, target and number of recorded years.
+
+- **70 / 15 / 15**, seed 42, stratified by **outcome × recorded years** (1, 2, 3,
+  4, 5+), so every partition has the same failure rate and the same mix of short
+  and long histories.
+- The SHA-256 of each file is in `configs/config.yaml`. The script fails if a
+  regenerated split differs, and runners load the split with
+  `preprocessing.load_splits`, which never regenerates it.
+- The smallest group is failed companies with one recorded year (10 companies),
+  so validation and test hold only 1–2 of them each.
+
+| Partition | Companies | Failed | 1 / 2 / 3 / 4 / 5+ years |
+|---|---|---|---|
+| Train | 6,279 | 426 (6.78%) | 8.4 / 10.1 / 8.4 / 7.6 / 65.5% |
+| Validation | 1,346 | 91 (6.76%) | 8.4 / 10.1 / 8.5 / 7.6 / 65.5% |
+| Test | 1,346 | 92 (6.84%) | 8.5 / 10.1 / 8.4 / 7.6 / 65.5% |
+
+Full counts per partition and *k* are in `results/metrics/split_summary.json`.
+
+### GRU histories
+
+`sequences.create_histories(data, lookback=k)` returns padded inputs, lengths,
+targets and per-company metadata.
+
+- **Anchor and target never change with *k*.** Every company keeps its last
+  recorded year *t* and its target (section 11); a larger *k* only adds older
+  years.
+- **Window:** the last *k* recorded years, selected backwards from *t*.
+  **Missing calendar years are skipped**: 2005, 2006, 2008 with *k* = 3 is a
+  3-step sequence.
+- **Order:** oldest to newest, so the last real step is always *t*.
+- **Short histories are padded, not dropped.** A company with fewer than *k*
+  years keeps all of them; zeros are added *after* its last real step and
+  `lengths` stores the real length. `pack_histories` wraps PyTorch's
+  `pack_padded_sequence`, so the GRU never reads padding and its final hidden
+  state is the state at *t*.
+- **Padding never enters fitted preprocessing:** fit scalers on
+  `valid_steps(histories)` (#46).
+
+**Alternatives considered.** Excluding companies with fewer than *k* years would
+give a different cohort for every *k*, so results across *k* would not be
+comparable. Inserting padded steps for missing calendar years would need a mask
+in the middle of a sequence, which `pack_padded_sequence` cannot represent.
+
+**Cohorts.** Main results use **all companies for every *k*** (same companies as
+the baselines). A sub-analysis repeats the evaluation on companies with at least
+*k* recorded years (`cohort_mask(h, "at_least_k_years")`).
+
+| *k* | Full *k*-year window | Padded | Window spans a gap |
+|---|---|---|---|
+| 1 | 8,971 | 0 | 0 |
+| 2 | 8,216 | 755 | 138 |
+| 3 | 7,310 | 1,661 | 244 |
+| 4 | 6,554 | 2,417 | 331 |
+| 5 | 5,873 | 3,098 | 395 |
