@@ -8,8 +8,9 @@ failed companies and of short/long histories.
 The split is saved once by ``scripts/prepare_data.py`` as three CSV files
 (``train.csv``, ``validation.csv``, ``test.csv``) and then only *loaded* by the
 model runners: ``load_splits`` never regenerates a missing or changed split.
-Each file stores the company's anchor year and target, so changing the GRU
-lookback k never changes a company's anchor, outcome or partition.
+Each file stores the company's anchor year and target, so the input condition
+(latest_year or full_history) never changes a company's anchor, outcome or
+partition.
 
 Dataset validation (schema, duplicates, labels, history) lives in
 ``validation.py``.

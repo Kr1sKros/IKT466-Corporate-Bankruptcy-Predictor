@@ -68,10 +68,9 @@ The other models receive the same financial history flattened into fixed-width,
 recency-aligned slots, with presence indicators and relative time offsets. Missing
 calendar years must remain distinguishable from consecutive observations.
 
-The full-history schema will support the audited 1999–2018 span (up to 20 annual
-records), retain short histories and reject silent truncation. Fit preprocessing
-only on valid training records. These extensions are planned; the current history
-builder still supports only the last 1–5 records (section 12).
+The full-history schema supports the audited 1999–2018 span (up to 20 annual
+records), retains short histories and rejects truncation. Fit preprocessing only
+on valid training records. Implemented in `src/sequences.py` (section 12).
 
 ## 4. Investigations
 
@@ -135,7 +134,7 @@ The project uses a simple `src/` layout without an additional project-package fo
 │   ├── data_loader.py            # Existing Kaggle download and CSV loading
 │   ├── validation.py             # Dataset validators and real-data audit
 │   ├── preprocessing.py          # Company splits, imputation/scaling
-│   ├── sequences.py              # Latest-year selection and GRU histories
+│   ├── sequences.py              # Latest-year/full-history GRU and tabular inputs
 │   ├── metrics.py
 │   ├── evaluation.py
 │   ├── visualization.py
@@ -196,12 +195,11 @@ The local CSV path in the config is separate from that cache. Run scripts from
 the repository root; future config loading should resolve paths with `pathlib`.
 
 Downloading/loading, dataset validation, jointly stratified company splits,
-1–5-record GRU histories, shared metrics/reproducibility helpers and aligned
-saved-prediction comparison are implemented. Scaling, training runners, models
-and plotting remain incomplete. **Full-history construction/flattening, all eight
-Optuna studies and paired-condition reporting are not yet implemented.**
-The existing split is reusable; existing 1–5-record coverage summaries describe
-the earlier implementation rather than the new experiment matrix.
+latest-year and full-history inputs (GRU sequences and flattened tables), shared
+metrics/reproducibility helpers and aligned saved-prediction comparison are
+implemented. Scaling, training runners, models and plotting remain incomplete.
+**All eight Optuna studies and paired-condition reporting are not yet
+implemented.**
 No trained models or experimental results are included. Settings marked `null`
 are unresolved choices, not runnable defaults.
 
@@ -365,11 +363,7 @@ label is company-level; it does not prove the timing:
 So the target is "bankruptcy in *t*+1 according to the publisher", not an
 independently verified event. Results and the report should use that wording.
 
-## 12. Existing split and history implementation (issues #47, #49–#51)
-
-The split below is retained by the revised study. The 1–5-record history API and
-coverage table describe existing code, which must be extended for full history
-and matched flattened inputs. They are not the required experiment matrix.
+## 12. Split and model inputs (issues #47, #48–#51)
 
 ### Company split
 
@@ -392,42 +386,48 @@ file stores the company's anchor year, target and number of recorded years.
 | Validation | 1,346 | 91 (6.76%) | 8.4 / 10.1 / 8.5 / 7.6 / 65.5% |
 | Test | 1,346 | 92 (6.84%) | 8.5 / 10.1 / 8.4 / 7.6 / 65.5% |
 
-Full counts per partition and *k* are in `results/metrics/split_summary.json`.
+Full counts per partition are in `results/metrics/split_summary.json`.
 
-### Existing GRU histories: extension required
+### Model inputs
 
-`sequences.create_histories(data, lookback=k)` returns padded inputs, lengths,
-targets and per-company metadata.
+`src/sequences.py` builds both input conditions from the same records, for the
+same companies, anchors and targets.
 
-- **Anchor and target never change with *k*.** Every company keeps its last
-  recorded year *t* and its target (section 11); a larger *k* only adds older
-  years.
-- **Window:** the last *k* recorded years, selected backwards from *t*.
-  **Missing calendar years are skipped**: 2005, 2006, 2008 with *k* = 3 is a
-  3-step sequence.
-- **Order:** oldest to newest, so the last real step is always *t*.
-- **Short histories are padded, not dropped.** A company with fewer than *k*
-  years keeps all of them; zeros are added *after* its last real step and
-  `lengths` stores the real length. `pack_histories` wraps PyTorch's
-  `pack_padded_sequence`, so the GRU never reads padding and its final hidden
-  state is the state at *t*.
-- **Padding never enters fitted preprocessing:** fit scalers on
-  `valid_steps(histories)` (#46).
+| | GRU (`create_histories`) | LR / XGBoost / MLP (`tabular_inputs`) |
+|---|---|---|
+| `latest_year` | 1 step: X1–X18 at *t* | 18 columns: X1–X18 at *t* |
+| `full_history` | Up to 20 steps: X1–X18 + `years_before_anchor`, oldest to newest, zero padding after the real steps | 20 slots × (X1–X18, `years_before_anchor`, `present`) = 400 columns, aligned so the record at *t* is always slot `r0` |
 
-**Alternatives considered.** Excluding companies with fewer than *k* years would
-give a different cohort for every *k*, so results across *k* would not be
-comparable. Inserting padded steps for missing calendar years would need a mask
-in the middle of a sequence, which `pack_padded_sequence` cannot represent.
+- **All records up to *t*, never truncated.** The capacity is 20 records (the
+  1999–2018 span); a company with more raises an error. On the real data the
+  longest history is exactly 20 records (1,172 companies), and all 78,682 rows
+  are used.
+- **Missing calendar years are skipped, not filled.** Every record carries
+  `years_before_anchor` = *t* − year, so gaps stay visible: 2005, 2006, 2008
+  with *t* = 2008 gives offsets 3, 2, 0. 710 companies have at least one gap.
+- **GRU padding:** `lengths` stores the real length and `pack_histories` wraps
+  PyTorch's `pack_padded_sequence`, so the GRU never reads padding and its final
+  hidden state is the state at *t*.
+- **Tabular padding:** empty slots are 0 with `present` = 0 and sit at the old
+  end. The same table is used for LR, XGBoost and MLP. A quick validation check
+  of XGBoost with NaN instead of 0 + flag gave the same AP within seed noise, so
+  identical inputs across model families were kept.
+- **Same information in both layouts:** a test checks that every flattened slot
+  equals the corresponding GRU step.
+- **Latest year adds nothing else:** no history length or temporal fields. A
+  one-record company has the same financial values in both conditions.
+- **Padding never enters fitted preprocessing:** scaling (#46) is fitted on real
+  records only (`valid_steps`), and padded slots are set back to 0 afterwards.
+- **Schema checks:** raw ID/label/year are never predictors, and the derived
+  columns are validated against their exact expected order
+  (`validate_tabular_columns`).
+- Every company is used in both conditions; history length and gaps can
+  themselves carry signal (see docs/study-design.md).
 
-**Existing cohort support.** The API retains all companies for every *k* and can
-filter to companies with at least *k* records (`cohort_mask(h, "at_least_k_years")`).
-The revised main experiment retains every company for both input conditions and
-reports history-group diagnostics instead of requiring a five-lookback sweep.
+| Partition | Companies | Records | Records per company (median / max) | Companies with gaps |
+|---|---|---|---|---|
+| Train | 6,279 | 55,302 | 7 / 20 | 483 |
+| Validation | 1,346 | 11,594 | 7 / 20 | 122 |
+| Test | 1,346 | 11,786 | 7 / 20 | 105 |
 
-| *k* | Full *k*-year window | Padded | Window spans a gap |
-|---|---|---|---|
-| 1 | 8,971 | 0 | 0 |
-| 2 | 8,216 | 755 | 138 |
-| 3 | 7,310 | 1,661 | 244 |
-| 4 | 6,554 | 2,417 | 331 |
-| 5 | 5,873 | 3,098 | 395 |
+The previous k = 1–5 lookback API was replaced by these two conditions.
