@@ -3,14 +3,14 @@
 <!-- task-dashboard:start -->
 ## Project progress
 
-**Finish by 22 November 2026 · 13/57 tasks complete (23%)**
+**Finish by 22 November 2026 · 14/57 tasks complete (25%)**
 
 ```mermaid
 %%{init: {"themeVariables": {"pie1": "#2da44e", "pie2": "#fb8c00", "pie3": "#9ca3af"}}}%%
 pie showData
     title Project tasks
-    "Done" : 13
-    "Due today or overdue" : 4
+    "Done" : 14
+    "Due today or overdue" : 3
     "Due later" : 40
 ```
 
