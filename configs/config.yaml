@@ -23,9 +23,9 @@ dataset:
     issues: [44, 45]
     report: results/metrics/data_audit.json
 
-# Current runner/history API settings below are retained for compatibility.
-# The new protocol is declared in study_plan and docs/study-design.md; #48–#51,
-# #53–#56, #60/#62/#70 must extend the implementation before its experiments run.
+# The protocol is declared in study_plan and docs/study-design.md. Inputs for
+# both conditions are implemented (#48-#51); #53-#56, #60/#62/#70 must implement
+# the runners before the experiments run.
 study_plan:
   models: [logistic_regression, xgboost, mlp, gru]
   input_conditions: [latest_year, full_history]
@@ -45,19 +45,24 @@ study_plan:
     tune_class_weights: true
   internal_finish_date: '2026-11-22'
 
+# Input representation (#48-#51, src/sequences.py, README section 12).
 inputs:
-  baseline_models: [logistic_regression, xgboost, mlp]
-  baseline_years: 1
   anchor: latest_company_year
-  gru_lookback_windows: [1, 2, 3, 4, 5]  # Existing API only; not the revised study matrix.
-  # GRU histories (#49-#51, README section 12):
-  window_selection: last_k_recorded_years  # Backwards from anchor t.
-  gru_year_order: oldest_to_newest  # Last real step is always t.
-  missing_year_policy: skip_gaps  # Calendar gaps are not filled.
-  short_history_policy: pad_end_and_pack  # Zero-pad after real steps; pack_padded_sequence.
-  evaluation_cohorts:
-    main: all_companies
-    sub_analysis: at_least_k_years
+  conditions: [latest_year, full_history]
+  latest_year: x1_to_x18_at_anchor  # No length or temporal fields added.
+  full_history:
+    records: all_up_to_anchor  # Never truncated; capacity overflow raises.
+    capacity: 20  # = study_plan.full_history_capacity.
+    missing_year_policy: skip_gaps  # Gaps visible through the offset.
+    temporal_input: years_before_anchor  # t - year; 0 at t.
+    gru:
+      order: oldest_to_newest  # Last real step is always t.
+      padding: zeros_after_real_steps_and_pack  # pack_padded_sequence.
+    tabular:
+      layout: recency_aligned_slots  # Record at t is always slot r0.
+      slot_fields: [X1-X18, years_before_anchor, present]
+      empty_slot_value: 0  # With present = 0; set after scaling (#46).
+  evaluation_cohort: all_companies  # Every company in both conditions.
 
 split:
   strategy: company_grouped_stratified

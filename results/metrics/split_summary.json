@@ -97,174 +97,145 @@
     }
   },
   "history_coverage": {
-    "1": {
-      "all": {
-        "n_companies": 8971,
-        "full_window": 8971,
-        "padded": 0,
-        "window_has_gap": 0,
-        "failed_full_window": 609,
-        "failed_padded": 0
+    "capacity": 20,
+    "all": {
+      "n_companies": 8971,
+      "n_failed": 609,
+      "records_total": 78682,
+      "records_per_company": {
+        "min": 1,
+        "median": 7.0,
+        "mean": 8.771,
+        "max": 20
       },
-      "test": {
-        "n_companies": 1346,
-        "full_window": 1346,
-        "padded": 0,
-        "window_has_gap": 0,
-        "failed_full_window": 92,
-        "failed_padded": 0
-      },
-      "train": {
-        "n_companies": 6279,
-        "full_window": 6279,
-        "padded": 0,
-        "window_has_gap": 0,
-        "failed_full_window": 426,
-        "failed_padded": 0
-      },
-      "validation": {
-        "n_companies": 1346,
-        "full_window": 1346,
-        "padded": 0,
-        "window_has_gap": 0,
-        "failed_full_window": 91,
-        "failed_padded": 0
+      "companies_with_gaps": 710,
+      "padded_slots_total": 100738,
+      "companies_per_length": {
+        "1": 755,
+        "2": 906,
+        "3": 756,
+        "4": 681,
+        "5": 616,
+        "6": 573,
+        "7": 497,
+        "8": 427,
+        "9": 402,
+        "10": 265,
+        "11": 290,
+        "12": 295,
+        "13": 240,
+        "14": 194,
+        "15": 186,
+        "16": 168,
+        "17": 148,
+        "18": 158,
+        "19": 242,
+        "20": 1172
       }
     },
-    "2": {
-      "all": {
-        "n_companies": 8971,
-        "full_window": 8216,
-        "padded": 755,
-        "window_has_gap": 138,
-        "failed_full_window": 599,
-        "failed_padded": 10
+    "test": {
+      "n_companies": 1346,
+      "n_failed": 92,
+      "records_total": 11786,
+      "records_per_company": {
+        "min": 1,
+        "median": 7.0,
+        "mean": 8.756,
+        "max": 20
       },
-      "test": {
-        "n_companies": 1346,
-        "full_window": 1232,
-        "padded": 114,
-        "window_has_gap": 26,
-        "failed_full_window": 90,
-        "failed_padded": 2
-      },
-      "train": {
-        "n_companies": 6279,
-        "full_window": 5751,
-        "padded": 528,
-        "window_has_gap": 97,
-        "failed_full_window": 419,
-        "failed_padded": 7
-      },
-      "validation": {
-        "n_companies": 1346,
-        "full_window": 1233,
-        "padded": 113,
-        "window_has_gap": 15,
-        "failed_full_window": 90,
-        "failed_padded": 1
+      "companies_with_gaps": 105,
+      "padded_slots_total": 15134,
+      "companies_per_length": {
+        "1": 114,
+        "2": 136,
+        "3": 113,
+        "4": 102,
+        "5": 95,
+        "6": 72,
+        "7": 62,
+        "8": 79,
+        "9": 63,
+        "10": 45,
+        "11": 44,
+        "12": 46,
+        "13": 32,
+        "14": 43,
+        "15": 30,
+        "16": 27,
+        "17": 17,
+        "18": 23,
+        "19": 36,
+        "20": 167
       }
     },
-    "3": {
-      "all": {
-        "n_companies": 8971,
-        "full_window": 7310,
-        "padded": 1661,
-        "window_has_gap": 244,
-        "failed_full_window": 577,
-        "failed_padded": 32
+    "train": {
+      "n_companies": 6279,
+      "n_failed": 426,
+      "records_total": 55302,
+      "records_per_company": {
+        "min": 1,
+        "median": 7.0,
+        "mean": 8.807,
+        "max": 20
       },
-      "test": {
-        "n_companies": 1346,
-        "full_window": 1096,
-        "padded": 250,
-        "window_has_gap": 43,
-        "failed_full_window": 86,
-        "failed_padded": 6
-      },
-      "train": {
-        "n_companies": 6279,
-        "full_window": 5117,
-        "padded": 1162,
-        "window_has_gap": 163,
-        "failed_full_window": 404,
-        "failed_padded": 22
-      },
-      "validation": {
-        "n_companies": 1346,
-        "full_window": 1097,
-        "padded": 249,
-        "window_has_gap": 38,
-        "failed_full_window": 87,
-        "failed_padded": 4
+      "companies_with_gaps": 483,
+      "padded_slots_total": 70278,
+      "companies_per_length": {
+        "1": 528,
+        "2": 634,
+        "3": 529,
+        "4": 477,
+        "5": 417,
+        "6": 410,
+        "7": 352,
+        "8": 275,
+        "9": 278,
+        "10": 183,
+        "11": 208,
+        "12": 209,
+        "13": 184,
+        "14": 126,
+        "15": 136,
+        "16": 121,
+        "17": 104,
+        "18": 109,
+        "19": 168,
+        "20": 831
       }
     },
-    "4": {
-      "all": {
-        "n_companies": 8971,
-        "full_window": 6554,
-        "padded": 2417,
-        "window_has_gap": 331,
-        "failed_full_window": 541,
-        "failed_padded": 68
+    "validation": {
+      "n_companies": 1346,
+      "n_failed": 91,
+      "records_total": 11594,
+      "records_per_company": {
+        "min": 1,
+        "median": 7.0,
+        "mean": 8.614,
+        "max": 20
       },
-      "test": {
-        "n_companies": 1346,
-        "full_window": 983,
-        "padded": 363,
-        "window_has_gap": 57,
-        "failed_full_window": 81,
-        "failed_padded": 11
-      },
-      "train": {
-        "n_companies": 6279,
-        "full_window": 4588,
-        "padded": 1691,
-        "window_has_gap": 219,
-        "failed_full_window": 379,
-        "failed_padded": 47
-      },
-      "validation": {
-        "n_companies": 1346,
-        "full_window": 983,
-        "padded": 363,
-        "window_has_gap": 55,
-        "failed_full_window": 81,
-        "failed_padded": 10
-      }
-    },
-    "5": {
-      "all": {
-        "n_companies": 8971,
-        "full_window": 5873,
-        "padded": 3098,
-        "window_has_gap": 395,
-        "failed_full_window": 505,
-        "failed_padded": 104
-      },
-      "test": {
-        "n_companies": 1346,
-        "full_window": 881,
-        "padded": 465,
-        "window_has_gap": 67,
-        "failed_full_window": 75,
-        "failed_padded": 17
-      },
-      "train": {
-        "n_companies": 6279,
-        "full_window": 4111,
-        "padded": 2168,
-        "window_has_gap": 260,
-        "failed_full_window": 354,
-        "failed_padded": 72
-      },
-      "validation": {
-        "n_companies": 1346,
-        "full_window": 881,
-        "padded": 465,
-        "window_has_gap": 68,
-        "failed_full_window": 76,
-        "failed_padded": 15
+      "companies_with_gaps": 122,
+      "padded_slots_total": 15326,
+      "companies_per_length": {
+        "1": 113,
+        "2": 136,
+        "3": 114,
+        "4": 102,
+        "5": 104,
+        "6": 91,
+        "7": 83,
+        "8": 73,
+        "9": 61,
+        "10": 37,
+        "11": 38,
+        "12": 40,
+        "13": 24,
+        "14": 25,
+        "15": 20,
+        "16": 20,
+        "17": 27,
+        "18": 26,
+        "19": 38,
+        "20": 174
       }
     }
   }
