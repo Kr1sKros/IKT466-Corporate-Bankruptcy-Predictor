@@ -1,0 +1,271 @@
+{
+  "seed": 42,
+  "fractions": {
+    "train": 0.7,
+    "validation": 0.15,
+    "test": 0.15
+  },
+  "stratify_by": [
+    "target",
+    "history_group"
+  ],
+  "sha256": {
+    "train": "22acdda6dcc0ddf4eb4970f330ee3da0c4e6a83f7953a7c71d40226a314ea8e6",
+    "validation": "f7e793099162a55f24a82fdec0bca4a60da5c6ffeae93ac7d4865bfba02d5eb2",
+    "test": "f4c9307d3ca500e6cb617a063f6b7d546b13cfcbc93504c00bc265d6c4bdc5fa"
+  },
+  "partitions": {
+    "train": {
+      "n_companies": 6279,
+      "company_share": 0.6999,
+      "n_failed": 426,
+      "failed_share": 0.0678,
+      "history_group_counts": {
+        "1": 528,
+        "2": 634,
+        "3": 529,
+        "4": 477,
+        "5+": 4111
+      },
+      "history_group_shares": {
+        "1": 0.0841,
+        "2": 0.101,
+        "3": 0.0842,
+        "4": 0.076,
+        "5+": 0.6547
+      }
+    },
+    "validation": {
+      "n_companies": 1346,
+      "company_share": 0.15,
+      "n_failed": 91,
+      "failed_share": 0.0676,
+      "history_group_counts": {
+        "1": 113,
+        "2": 136,
+        "3": 114,
+        "4": 102,
+        "5+": 881
+      },
+      "history_group_shares": {
+        "1": 0.084,
+        "2": 0.101,
+        "3": 0.0847,
+        "4": 0.0758,
+        "5+": 0.6545
+      }
+    },
+    "test": {
+      "n_companies": 1346,
+      "company_share": 0.15,
+      "n_failed": 92,
+      "failed_share": 0.0684,
+      "history_group_counts": {
+        "1": 114,
+        "2": 136,
+        "3": 113,
+        "4": 102,
+        "5+": 881
+      },
+      "history_group_shares": {
+        "1": 0.0847,
+        "2": 0.101,
+        "3": 0.084,
+        "4": 0.0758,
+        "5+": 0.6545
+      }
+    },
+    "all": {
+      "n_companies": 8971,
+      "company_share": 1.0,
+      "n_failed": 609,
+      "failed_share": 0.0679,
+      "history_group_counts": {
+        "1": 755,
+        "2": 906,
+        "3": 756,
+        "4": 681,
+        "5+": 5873
+      },
+      "history_group_shares": {
+        "1": 0.0842,
+        "2": 0.101,
+        "3": 0.0843,
+        "4": 0.0759,
+        "5+": 0.6547
+      }
+    }
+  },
+  "history_coverage": {
+    "1": {
+      "all": {
+        "n_companies": 8971,
+        "full_window": 8971,
+        "padded": 0,
+        "window_has_gap": 0,
+        "failed_full_window": 609,
+        "failed_padded": 0
+      },
+      "test": {
+        "n_companies": 1346,
+        "full_window": 1346,
+        "padded": 0,
+        "window_has_gap": 0,
+        "failed_full_window": 92,
+        "failed_padded": 0
+      },
+      "train": {
+        "n_companies": 6279,
+        "full_window": 6279,
+        "padded": 0,
+        "window_has_gap": 0,
+        "failed_full_window": 426,
+        "failed_padded": 0
+      },
+      "validation": {
+        "n_companies": 1346,
+        "full_window": 1346,
+        "padded": 0,
+        "window_has_gap": 0,
+        "failed_full_window": 91,
+        "failed_padded": 0
+      }
+    },
+    "2": {
+      "all": {
+        "n_companies": 8971,
+        "full_window": 8216,
+        "padded": 755,
+        "window_has_gap": 138,
+        "failed_full_window": 599,
+        "failed_padded": 10
+      },
+      "test": {
+        "n_companies": 1346,
+        "full_window": 1232,
+        "padded": 114,
+        "window_has_gap": 26,
+        "failed_full_window": 90,
+        "failed_padded": 2
+      },
+      "train": {
+        "n_companies": 6279,
+        "full_window": 5751,
+        "padded": 528,
+        "window_has_gap": 97,
+        "failed_full_window": 419,
+        "failed_padded": 7
+      },
+      "validation": {
+        "n_companies": 1346,
+        "full_window": 1233,
+        "padded": 113,
+        "window_has_gap": 15,
+        "failed_full_window": 90,
+        "failed_padded": 1
+      }
+    },
+    "3": {
+      "all": {
+        "n_companies": 8971,
+        "full_window": 7310,
+        "padded": 1661,
+        "window_has_gap": 244,
+        "failed_full_window": 577,
+        "failed_padded": 32
+      },
+      "test": {
+        "n_companies": 1346,
+        "full_window": 1096,
+        "padded": 250,
+        "window_has_gap": 43,
+        "failed_full_window": 86,
+        "failed_padded": 6
+      },
+      "train": {
+        "n_companies": 6279,
+        "full_window": 5117,
+        "padded": 1162,
+        "window_has_gap": 163,
+        "failed_full_window": 404,
+        "failed_padded": 22
+      },
+      "validation": {
+        "n_companies": 1346,
+        "full_window": 1097,
+        "padded": 249,
+        "window_has_gap": 38,
+        "failed_full_window": 87,
+        "failed_padded": 4
+      }
+    },
+    "4": {
+      "all": {
+        "n_companies": 8971,
+        "full_window": 6554,
+        "padded": 2417,
+        "window_has_gap": 331,
+        "failed_full_window": 541,
+        "failed_padded": 68
+      },
+      "test": {
+        "n_companies": 1346,
+        "full_window": 983,
+        "padded": 363,
+        "window_has_gap": 57,
+        "failed_full_window": 81,
+        "failed_padded": 11
+      },
+      "train": {
+        "n_companies": 6279,
+        "full_window": 4588,
+        "padded": 1691,
+        "window_has_gap": 219,
+        "failed_full_window": 379,
+        "failed_padded": 47
+      },
+      "validation": {
+        "n_companies": 1346,
+        "full_window": 983,
+        "padded": 363,
+        "window_has_gap": 55,
+        "failed_full_window": 81,
+        "failed_padded": 10
+      }
+    },
+    "5": {
+      "all": {
+        "n_companies": 8971,
+        "full_window": 5873,
+        "padded": 3098,
+        "window_has_gap": 395,
+        "failed_full_window": 505,
+        "failed_padded": 104
+      },
+      "test": {
+        "n_companies": 1346,
+        "full_window": 881,
+        "padded": 465,
+        "window_has_gap": 67,
+        "failed_full_window": 75,
+        "failed_padded": 17
+      },
+      "train": {
+        "n_companies": 6279,
+        "full_window": 4111,
+        "padded": 2168,
+        "window_has_gap": 260,
+        "failed_full_window": 354,
+        "failed_padded": 72
+      },
+      "validation": {
+        "n_companies": 1346,
+        "full_window": 881,
+        "padded": 465,
+        "window_has_gap": 68,
+        "failed_full_window": 76,
+        "failed_padded": 15
+      }
+    }
+  }
+}
