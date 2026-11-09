@@ -23,11 +23,33 @@ dataset:
     issues: [44, 45]
     report: results/metrics/data_audit.json
 
+# Current runner/history API settings below are retained for compatibility.
+# The new protocol is declared in study_plan and docs/study-design.md; #48–#51,
+# #53–#56, #60/#62/#70 must extend the implementation before its experiments run.
+study_plan:
+  models: [logistic_regression, xgboost, mlp, gru]
+  input_conditions: [latest_year, full_history]
+  configuration_count: 8
+  full_history_capacity: 20  # Declared dataset schema span, 1999–2018; never truncate.
+  shared_company_split: true
+  tuning:
+    framework: optuna
+    sampler: TPESampler
+    sampler_seed: 42
+    direction: maximize
+    objective: validation_average_precision
+    attempted_trials_per_study: 20  # Initial pilot budget, identical across studies.
+    n_jobs: 1
+    pruning: none
+    separate_study_per_model_and_condition: true
+    tune_class_weights: true
+  internal_finish_date: '2026-11-22'
+
 inputs:
   baseline_models: [logistic_regression, xgboost, mlp]
   baseline_years: 1
   anchor: latest_company_year
-  gru_lookback_windows: [1, 2, 3, 4, 5]
+  gru_lookback_windows: [1, 2, 3, 4, 5]  # Existing API only; not the revised study matrix.
   # GRU histories (#49-#51, README section 12):
   window_selection: last_k_recorded_years  # Backwards from anchor t.
   gru_year_order: oldest_to_newest  # Last real step is always t.

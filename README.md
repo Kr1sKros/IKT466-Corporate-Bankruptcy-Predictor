@@ -26,7 +26,12 @@ Plan: data preparation by **15 Nov**, model training by **16 Nov**, experiments 
 
 Project for the Introduction to Machine Learning course (IKT466) at UiA.
 
-We predict whether a US public company goes bankrupt from its yearly accounting data, and test whether a **GRU over multi-year financial history** beats models that only see the **latest year**.
+We compare logistic regression, XGBoost, MLP and GRU using either the **latest
+recorded year** or **all available financial history** for each company. All eight
+model/input combinations use the same company split and separate Optuna studies.
+
+The agreed protocol is in [docs/study-design.md](docs/study-design.md). A revised,
+drop-in report introduction is in [report/introduction.tex](report/introduction.tex).
 
 ## 1. Task, data and research question
 
@@ -40,35 +45,75 @@ We predict whether a US public company goes bankrupt from its yearly accounting 
 
 **Research question:**
 
-> Does modelling a company's multi-year financial history with a GRU predict bankruptcy better than using only its latest year? How many years of history actually help?
+> Does using all available financial history improve corporate bankruptcy prediction compared with using only the latest year, and how does this effect differ across model families?
 
-## 2. Baselines
+## 2. Models and input conditions
 
-- Logistic regression
-- XGBoost
-- MLP
+| Model | Latest-year condition | Full-history condition |
+|---|---|---|
+| Logistic regression | Latest annual features | Flattened full history |
+| XGBoost | Latest annual features | Flattened full history |
+| MLP | Latest annual features | Flattened full history |
+| GRU | One annual observation | All recorded observations as a sequence |
 
-All baselines use only the company's latest year, so comparing them with the GRU shows the value of history.
+Each cell is trained and tuned separately: **eight configurations**. Full history
+includes companies with only one or two records as well as longer histories. It
+is not capped at five years. SVM is outside the agreed scope.
 
-## 3. Neural model
+## 3. History representation
 
-A GRU that reads a company's last *k* recorded years of accounting data. The years are selected backwards from the latest year and fed oldest to newest, so the last step is always the latest year (see section 12).
+All inputs end at the same company-specific final recorded year *t*. The GRU
+reads real observations oldest to newest and ignores padding using real lengths.
+The other models receive the same financial history flattened into fixed-width,
+recency-aligned slots, with presence indicators and relative time offsets. Missing
+calendar years must remain distinguishable from consecutive observations.
+
+The full-history schema will support the audited 1999–2018 span (up to 20 annual
+records), retain short histories and reject silent truncation. Fit preprocessing
+only on valid training records. These extensions are planned; the current history
+builder still supports only the last 1–5 records (section 12).
 
 ## 4. Investigations
 
-1. **Baseline comparison:** logistic regression vs XGBoost vs MLP vs GRU.
-2. **History length:** the GRU with *k* = 1, 2, 3, 4 and 5 years.
+1. **Model comparison:** compare all four families within each input condition.
+2. **Value of history:** compare latest-year versus full-history performance
+   within each family, including results grouped by available history.
+
+This replaces the GRU-only 1–5-year sweep. It tests the value of available history,
+not the optimal number of years. Full-history gains may also reflect history
+length/missingness signals and separately selected model capacity.
+
+### Optuna tuning
+
+Use one independent Optuna study per model/input combination, maximising
+validation **Average Precision (AP)** with seeded `TPESampler`. Use the same
+search method and predeclared trial budget for all eight studies; the initial
+planning budget is 20 attempted trials per study. Model-specific search spaces
+stay consistent between paired input conditions where applicable. Best settings
+are allowed to differ. Record actual computing cost as well as trial counts.
+
+Optuna selects hyperparameters and **class/loss weights**. Model coefficients,
+tree parameters and neural network weights are learned during training inside
+each trial. Training-label statistics determine any class-weight ranges; neither
+validation nor test data is resampled or reweighted. See the protocol for seeds,
+stopping rules, failed trials, search records and remaining implementation work.
 
 ## 5. Evaluation
 
-- Separate training, validation and test sets, split by company
-- **Main metric: PR-AUC**, because bankruptcies are rare and accuracy would be misleading
-- Precision and recall reported together
+- Reuse one persisted 70/15/15 company split for every model and input condition
+- Stratify jointly by outcome and recorded-history group (1, 2, 3, 4, 5+),
+  preserving approximately similar proportions rather than balancing the classes
+- **Main metric: Average Precision (AP)**, not trapezoidal PR area
+- Report precision, recall and F1 with validation-selected thresholds
+- Keep test IDs, anchors and outcomes identical; freeze settings before testing
+- Report history-group sample sizes, prevalence, AP changes and computing cost
 - Error analysis of missed bankruptcies and false alarms
 
 ## 6. Reproducibility
 
 The repository will contain the code, configurations, split definitions and saved results needed to reproduce the main comparisons.
+Include Optuna study/trial records, search spaces, sampler/training seeds, selected
+class weights, preprocessing schemas and the checkpoint for each neural evaluation.
 
 ## 7. Repository structure
 
@@ -108,7 +153,7 @@ The project uses a simple `src/` layout without an additional project-package fo
 │   ├── train_mlp.py
 │   ├── train_gru.py
 │   ├── compare_models.py
-│   └── compare_lookback.py         # GRU only, k = 1–5
+│   └── compare_lookback.py         # Legacy stub; to become paired input-condition comparison
 ├── tests/
 │   ├── test_validation.py
 │   ├── test_preprocessing.py
@@ -150,9 +195,13 @@ full report to `results/metrics/data_audit.json` (see section 10).
 The local CSV path in the config is separate from that cache. Run scripts from
 the repository root; future config loading should resolve paths with `pathlib`.
 
-Downloading/loading, dataset validation, company splits and GRU history
-construction are implemented. Scaling, models and plotting still raise
-`NotImplementedError`.
+Downloading/loading, dataset validation, jointly stratified company splits,
+1–5-record GRU histories, shared metrics/reproducibility helpers and aligned
+saved-prediction comparison are implemented. Scaling, training runners, models
+and plotting remain incomplete. **Full-history construction/flattening, all eight
+Optuna studies and paired-condition reporting are not yet implemented.**
+The existing split is reusable; existing 1–5-record coverage summaries describe
+the earlier implementation rather than the new experiment matrix.
 No trained models or experimental results are included. Settings marked `null`
 are unresolved choices, not runnable defaults.
 
@@ -161,15 +210,17 @@ are unresolved choices, not runnable defaults.
 1. Audit company IDs, years, and provided labels in `data_loader.py`,
    `preprocessing.py`, and `inspect_data.py`.
 2. Implement reproducible company-disjoint splits and training-only preprocessing.
-3. Implement latest-year baseline inputs and aligned GRU histories; agree short
-   history and missing-year policies and add meaningful tests.
-4. Implement shared metrics/evaluation, then each model and its training entry
-   point step by step.
-5. Run the two planned experiments, inspect errors, and document measured results.
+3. Extend history construction to all records and implement matched flattened and
+   sequential inputs, padding indicators, time offsets and tests.
+4. Integrate every model with the common Optuna protocol, train-only preparation
+   and model/condition-specific saved artifacts.
+5. Run the eight configurations, compare models and paired history conditions,
+   inspect errors and document measured results.
 
-All baselines receive only latest-year features. The GRU history experiment holds
-model family fixed; the baseline-versus-GRU comparison changes both architecture
-and history, which should be discussed when interpreting improvements.
+Every model receives both input conditions. Between-family comparisons hold the
+available information fixed; within-family comparisons change input condition
+and allow validation-selected hyperparameters to change. Interpret these as
+comparisons after comparable tuning, not isolated causal effects of adding years.
 Use feature branches and teammate-reviewed pull requests; record split decisions,
 experiment settings, dataset version, and contributions in tracked documentation.
 
@@ -314,7 +365,11 @@ label is company-level; it does not prove the timing:
 So the target is "bankruptcy in *t*+1 according to the publisher", not an
 independently verified event. Results and the report should use that wording.
 
-## 12. Splits and GRU histories (issues #47, #49–#51)
+## 12. Existing split and history implementation (issues #47, #49–#51)
+
+The split below is retained by the revised study. The 1–5-record history API and
+coverage table describe existing code, which must be extended for full history
+and matched flattened inputs. They are not the required experiment matrix.
 
 ### Company split
 
@@ -323,7 +378,7 @@ partition and writes `data/splits/{train,validation,test}.csv` (gitignored). Eac
 file stores the company's anchor year, target and number of recorded years.
 
 - **70 / 15 / 15**, seed 42, stratified by **outcome × recorded years** (1, 2, 3,
-  4, 5+), so every partition has the same failure rate and the same mix of short
+  4, 5+), so partitions have approximately the same failure rate and mix of short
   and long histories.
 - The SHA-256 of each file is in `configs/config.yaml`. The script fails if a
   regenerated split differs, and runners load the split with
@@ -339,7 +394,7 @@ file stores the company's anchor year, target and number of recorded years.
 
 Full counts per partition and *k* are in `results/metrics/split_summary.json`.
 
-### GRU histories
+### Existing GRU histories: extension required
 
 `sequences.create_histories(data, lookback=k)` returns padded inputs, lengths,
 targets and per-company metadata.
@@ -364,9 +419,10 @@ give a different cohort for every *k*, so results across *k* would not be
 comparable. Inserting padded steps for missing calendar years would need a mask
 in the middle of a sequence, which `pack_padded_sequence` cannot represent.
 
-**Cohorts.** Main results use **all companies for every *k*** (same companies as
-the baselines). A sub-analysis repeats the evaluation on companies with at least
-*k* recorded years (`cohort_mask(h, "at_least_k_years")`).
+**Existing cohort support.** The API retains all companies for every *k* and can
+filter to companies with at least *k* records (`cohort_mask(h, "at_least_k_years")`).
+The revised main experiment retains every company for both input conditions and
+reports history-group diagnostics instead of requiring a five-lookback sweep.
 
 | *k* | Full *k*-year window | Padded | Window spans a gap |
 |---|---|---|---|
