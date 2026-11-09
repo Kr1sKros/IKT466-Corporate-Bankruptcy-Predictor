@@ -4,17 +4,24 @@ All dataset validators live here. Other modules and scripts should call these
 functions rather than re-implementing the checks (see issue #44).
 
 Hard failures (ambiguous records) raise ``DataValidationError``:
-schema mismatches, unknown labels, non-integer years, missing company IDs,
-duplicate company/year rows, infinite feature values and companies whose label
-changes over time. Everything else is reported in the audit dictionary.
+schema mismatches, unknown labels, non-integer years, missing or malformed
+company IDs, duplicate company/year rows, infinite feature values, companies
+whose label changes over time and feature columns that break the accounting
+relations of the feature dictionary. Everything else is reported in the audit
+dictionary.
 
 Facts that come from the publisher's documentation rather than from the CSV are
 kept in ``PUBLISHER_DOCUMENTATION`` so the audit can show them separately.
+
+The input contract (issue #45) also lives here: the feature dictionary, the
+accounting identities that confirm it, the predictor-column guard and the single
+definition of the prediction target (``anchor_targets``).
 """
 
 from __future__ import annotations
 
-from typing import Any
+import re
+from typing import Any, Iterable
 
 import numpy as np
 import pandas as pd
@@ -23,9 +30,60 @@ COMPANY_COLUMN = "company_name"
 YEAR_COLUMN = "year"
 LABEL_COLUMN = "status_label"
 FEATURE_COLUMNS = [f"X{i}" for i in range(1, 19)]
+NON_FEATURE_COLUMNS = (COMPANY_COLUMN, YEAR_COLUMN, LABEL_COLUMN)
 EXPECTED_COLUMNS = [COMPANY_COLUMN, LABEL_COLUMN, YEAR_COLUMN, *FEATURE_COLUMNS]
 LABEL_VALUES = ("alive", "failed")
+POSITIVE_LABEL = "failed"
+COMPANY_ID_PATTERN = re.compile(r"C_\d+")
 MAX_LOOKBACK = 5
+
+# Feature names from the Kaggle dataset description (version 3, retrieved via the
+# Kaggle API). They apply to the Kaggle CSV only: the publisher's GitHub CSV uses
+# a different X1-X18 order (see README section 10). "flow" = fiscal-year amount
+# from the income statement; "stock" = year-end balance; "market" = market data.
+# Neither source states units; magnitudes are consistent with millions of USD.
+FEATURE_DICTIONARY: dict[str, dict[str, str]] = {
+    "X1": {"name": "Current assets", "kind": "stock"},
+    "X2": {"name": "Cost of goods sold", "kind": "flow"},
+    "X3": {"name": "Depreciation and amortization", "kind": "flow"},
+    "X4": {"name": "EBITDA", "kind": "flow"},
+    "X5": {"name": "Inventory", "kind": "stock"},
+    "X6": {"name": "Net income", "kind": "flow"},
+    "X7": {"name": "Total receivables", "kind": "stock"},
+    "X8": {"name": "Market value (market capitalization)", "kind": "market"},
+    "X9": {"name": "Net sales", "kind": "flow"},
+    "X10": {"name": "Total assets", "kind": "stock"},
+    "X11": {"name": "Total long-term debt", "kind": "stock"},
+    "X12": {"name": "EBIT", "kind": "flow"},
+    "X13": {"name": "Gross profit", "kind": "flow"},
+    "X14": {"name": "Total current liabilities", "kind": "stock"},
+    "X15": {"name": "Retained earnings", "kind": "stock"},
+    "X16": {"name": "Total revenue", "kind": "flow"},
+    "X17": {"name": "Total liabilities", "kind": "stock"},
+    "X18": {"name": "Total operating expenses", "kind": "flow"},
+}
+
+# Accounting relations implied by the dictionary. If the names were attached to
+# the wrong columns (as in the publisher's reordered CSV) these would fail.
+# Equalities: (lhs, [terms added], [terms subtracted]).
+ACCOUNTING_EQUALITIES: dict[str, tuple[str, list[str], list[str]]] = {
+    "gross_profit = net_sales - cogs": ("X13", ["X9"], ["X2"]),
+    "ebit = ebitda - depreciation_amortization": ("X12", ["X4"], ["X3"]),
+    "ebitda = total_revenue - operating_expenses": ("X4", ["X16"], ["X18"]),
+}
+# Inequalities: (smaller, larger).
+ACCOUNTING_INEQUALITIES: dict[str, tuple[str, str]] = {
+    "current_assets <= total_assets": ("X1", "X10"),
+    "inventory <= current_assets": ("X5", "X1"),
+    "receivables <= current_assets": ("X7", "X1"),
+    "current_liabilities <= total_liabilities": ("X14", "X17"),
+    "long_term_debt <= total_liabilities": ("X11", "X17"),
+    "cogs <= operating_expenses": ("X2", "X18"),
+}
+# Values are rounded to three decimals, so allow rounding error; a relation
+# must hold in at least this share of rows (a few source-data errors remain).
+IDENTITY_ATOL = 0.0015
+IDENTITY_MIN_SHARE = 0.99
 
 # Statistics stated in README.md section 1; compared against measured values.
 README_STATISTICS: dict[str, Any] = {
@@ -96,6 +154,151 @@ def validate_schema(data: pd.DataFrame) -> dict[str, Any]:
         raise DataValidationError(f"Non-numeric feature columns: {non_numeric}")
 
     return {"columns": columns, "n_rows": len(data), "n_columns": len(columns)}
+
+
+def validate_predictor_columns(columns: Iterable[str]) -> list[str]:
+    """Return ``columns`` as a list if they are all X1-X18 predictors.
+
+    Raises if an identifier, year or label column (or anything outside the
+    feature dictionary) would be used as a model input.
+    """
+    columns = list(columns)
+    leaked = [c for c in columns if c in NON_FEATURE_COLUMNS]
+    unknown = [c for c in columns if c not in FEATURE_COLUMNS and c not in NON_FEATURE_COLUMNS]
+    if leaked or unknown:
+        raise DataValidationError(
+            f"Predictor columns must be X1-X18 only: non-features={leaked}, unknown={unknown}"
+        )
+    if len(set(columns)) != len(columns):
+        raise DataValidationError(f"Repeated predictor columns: {columns}")
+    return columns
+
+
+def check_company_ids_and_order(data: pd.DataFrame) -> dict[str, Any]:
+    """Validate the anonymised company IDs and describe the annual ordering.
+
+    IDs must look like ``C_<number>``. The IDs are anonymised, so the CSV cannot
+    show that one ID is the same legal entity in every year; that is taken from
+    the publisher. The file order is reported only: consumers must sort with
+    ``sort_panel`` instead of relying on it.
+    """
+    ids = data[COMPANY_COLUMN].astype(str)
+    bad = sorted(set(ids[~ids.map(lambda s: bool(COMPANY_ID_PATTERN.fullmatch(s)))]))
+    if bad:
+        raise DataValidationError(
+            f"{len(bad)} company IDs do not match 'C_<number>', e.g. {bad[:5]}"
+        )
+    # A company is contiguous if its rows form one block in file order.
+    blocks = int((ids != ids.shift()).sum())
+    years_increasing = bool(
+        data.groupby(COMPANY_COLUMN, sort=False)[YEAR_COLUMN]
+        .apply(lambda y: bool(y.is_monotonic_increasing))
+        .all()
+    )
+    return {
+        "company_id_format": "C_<number>",
+        "n_companies": int(ids.nunique()),
+        "companies_contiguous_in_file": blocks == ids.nunique(),
+        "years_increasing_within_company_in_file": years_increasing,
+    }
+
+
+def sort_panel(data: pd.DataFrame) -> pd.DataFrame:
+    """Sort rows by numeric company ID, then year (oldest first)."""
+    order = data[COMPANY_COLUMN].str.slice(2).astype(int)
+    return (
+        data.assign(_company_order=order)
+        .sort_values(["_company_order", YEAR_COLUMN], kind="stable")
+        .drop(columns="_company_order")
+        .reset_index(drop=True)
+    )
+
+
+def check_accounting_identities(data: pd.DataFrame) -> dict[str, Any]:
+    """Confirm the feature dictionary with accounting relations between columns.
+
+    Each relation must hold in at least ``IDENTITY_MIN_SHARE`` of rows; otherwise
+    the X1-X18 names are attached to the wrong columns and the audit fails.
+    """
+    def total(columns: list[str]) -> np.ndarray:
+        return data[columns].to_numpy(dtype=float).sum(axis=1)
+
+    results: dict[str, dict[str, Any]] = {}
+    for name, (lhs, plus, minus) in ACCOUNTING_EQUALITIES.items():
+        rhs = total(plus) - (total(minus) if minus else 0.0)
+        holds = np.isclose(data[lhs].to_numpy(dtype=float), rhs, rtol=1e-3, atol=IDENTITY_ATOL)
+        results[name] = holds
+    for name, (smaller, larger) in ACCOUNTING_INEQUALITIES.items():
+        results[name] = (
+            data[smaller].to_numpy(dtype=float)
+            <= data[larger].to_numpy(dtype=float) + IDENTITY_ATOL
+        )
+
+    report = {
+        name: {"share_holding": round(float(h.mean()), 6), "rows_violating": int((~h).sum())}
+        for name, h in results.items()
+    }
+    failing = [n for n, r in report.items() if r["share_holding"] < IDENTITY_MIN_SHARE]
+    if failing:
+        raise DataValidationError(
+            f"Accounting relations fail, so feature names do not match columns: {failing}"
+        )
+    return report
+
+
+def anchor_targets(data: pd.DataFrame) -> pd.DataFrame:
+    """Return the prediction target: one row per company at its anchor year t.
+
+    The anchor t is the company's last recorded year. ``target`` is 1 when the
+    company's (company-level) status is ``failed`` and 0 otherwise. Under the
+    publisher's convention a failed company's last year is the fiscal year
+    before its Chapter 7/11 filing, so ``target`` is meant as "files in t+1".
+    Earlier rows of a failed company are never targets.
+    """
+    verify_target_labels(data)
+    last = data.groupby(COMPANY_COLUMN)[YEAR_COLUMN].transform("max")
+    anchors = data.loc[data[YEAR_COLUMN].eq(last), [COMPANY_COLUMN, YEAR_COLUMN, LABEL_COLUMN]]
+    anchors = sort_panel(anchors).rename(columns={YEAR_COLUMN: "anchor_year"})
+    anchors["target"] = anchors[LABEL_COLUMN].eq(POSITIVE_LABEL).astype(int)
+    return anchors
+
+
+def target_summary(data: pd.DataFrame) -> dict[str, Any]:
+    """Describe the anchor-year target and what the CSV can and cannot show."""
+    anchors = anchor_targets(data)
+    last_dataset_year = int(data[YEAR_COLUMN].max())
+    at_boundary = anchors["anchor_year"].eq(last_dataset_year)
+    positive = anchors["target"].eq(1)
+    return {
+        "definition": (
+            "One observation per company at anchor t = last recorded year; "
+            "target = 1 if status_label is 'failed', else 0. Intended meaning: "
+            "Chapter 7/11 filing in t+1 (publisher convention)."
+        ),
+        "n_anchors": len(anchors),
+        "n_positive": int(positive.sum()),
+        "positive_share": round(float(positive.mean()), 6),
+        "positives_at_last_dataset_year": int((positive & at_boundary).sum()),
+        "negatives_at_last_dataset_year": int((~positive & at_boundary).sum()),
+        "negatives_leaving_panel_early": int((~positive & ~at_boundary).sum()),
+        "target_verified": False,
+        "evidence": [
+            "status_label is constant within every company (company-level label).",
+            "Earlier rows of a failed company repeat the company label, so only "
+            "the last recorded year can match the documented year-level convention.",
+            "Publisher and Kaggle documentation: the fiscal year before a Chapter 7/11 "
+            "filing is labelled bankrupt 'for the next year'.",
+        ],
+        "limitations": [
+            "The filing date is not in the CSV, so it cannot show that a failed "
+            "company's last year is the year before its filing.",
+            "Alive companies that leave the panel before the last dataset year have "
+            "no observed t+1 (merger, delisting or going private are possible); "
+            "their 0 rests on the publisher's labelling.",
+            "Companies whose anchor is the last dataset year have t+1 outside the "
+            "data; their label rests on the publisher's follow-up.",
+        ],
+    }
 
 
 def check_duplicates(data: pd.DataFrame) -> dict[str, int]:
@@ -330,9 +533,12 @@ def audit_dataset(
 ) -> dict[str, Any]:
     """Run every validator and return one JSON-serialisable audit report."""
     schema = validate_schema(data)
+    identity = check_company_ids_and_order(data)
     duplicates = check_duplicates(data)
     values = check_nonfinite(data)
+    identities = check_accounting_identities(data)
     labels = verify_target_labels(data)
+    target = target_summary(data)
     history = history_summary(data)
 
     measured = {
@@ -348,10 +554,14 @@ def audit_dataset(
         "provenance": provenance or {},
         "measured": measured,
         "schema": schema,
+        "company_ids_and_order": identity,
         "duplicates": duplicates,
         "feature_values": values,
+        "feature_dictionary": FEATURE_DICTIONARY,
+        "accounting_identities": identities,
         "identical_feature_columns": identical_feature_columns(data),
         "labels": labels,
+        "target": target,
         "history": history,
         "discrepancies_vs_readme": compare_with_reference(measured, README_STATISTICS),
         "discrepancies_vs_publisher_documentation": compare_with_reference(
@@ -368,6 +578,7 @@ def audit_dataset(
             "labels_follow_documented_year_level_convention": (
                 labels["failed_rows_before_terminal_year"] == 0
             ),
+            "feature_dictionary_consistent_with_accounting_identities": True,
             "not_verifiable_from_csv": [
                 "whether values were synthetic or imputed by the publisher",
                 "that the terminal year of a failed company precedes its filing",

@@ -30,12 +30,12 @@ We predict whether a US public company goes bankrupt from its yearly accounting 
 
 ## 1. Task, data and research question
 
-**Task:** binary classification. Given a company's accounting data, did it go bankrupt (`failed`) or not (`alive`)?
+**Task:** binary classification. Given a company's accounting data up to its last recorded year *t*, does it file for bankruptcy (Chapter 7/11) in year *t*+1 (`failed`) or not (`alive`)? See section 11 for the exact target and its limitations.
 
 **Dataset:** US public companies bankruptcy dataset (Lombardo et al., *Future Internet* 14(8):244, 2022).
 - 8,971 companies listed on NYSE/NASDAQ, 1999–2018
 - 78,682 firm-year rows with 18 accounting variables each
-- Label: `status_label` (`alive` / `failed`), used as provided
+- Label: `status_label` (`alive` / `failed`), a company-level status used only at each company's last recorded year
 - 609 failed companies (≈ 6.8%)
 
 **Research question:**
@@ -213,8 +213,8 @@ version 3, `american_bankruptcy.csv`, SHA-256 `cff2c899…419b5e` (audited 2026-
   the files. Kaggle → publisher: X1→X1, X2→X3, X3→X5, X4→X7, X5→X9, X6→X11,
   X7→X13, X8→X15, X9→X14/X17, X10→X2, X11→X4, X12→X6, X13→X8, X14→X10,
   X15→X12, X16→X14/X17, X17→X16, X18→X18 (the duplicated pair is X9/X16 in
-  Kaggle and X14/X17 in the publisher file). Feature meanings must therefore be
-  checked against the right file (#45).
+  Kaggle and X14/X17 in the publisher file). The feature meanings in section 11
+  apply to the Kaggle file and are confirmed against its values.
 - In the publisher's CSV, 64.5% of values are exactly 1000× the Kaggle value (a
   lost decimal point). About 23.8% of the publisher's year-over-year changes are
   ~1000× jumps, against 0.06% in the Kaggle file, so we use the Kaggle file.
@@ -222,3 +222,93 @@ version 3, `american_bankruptcy.csv`, SHA-256 `cff2c899…419b5e` (audited 2026-
   can only be taken from the publisher; the CSV shows no copied feature rows
   within a company, which is consistent with it but not proof.
 
+
+## 11. Data dictionary and target (issue #45)
+
+The checks below run as part of `python scripts/inspect_data.py`; the contract is
+implemented in `src/validation.py`.
+
+### Columns
+
+| Column | Role |
+|---|---|
+| `company_name` | Anonymised company ID (`C_<number>`). Never a model input. |
+| `year` | Fiscal year (integer, 1999–2018). Never a model input. |
+| `status_label` | `alive` / `failed`, the same in every year of a company. Never a model input; used only to build the target. |
+| `X1`–`X18` | The only predictors (`validate_predictor_columns` rejects anything else). |
+
+### Features
+
+Names come from the Kaggle dataset description (version 3). The publisher's
+GitHub README gives no definitions, and its CSV uses a different column order, so
+these names apply to the Kaggle file only. Neither source states units; the
+magnitudes (median total assets 213.2, three decimals) are consistent with
+millions of USD, but this is an inference.
+
+| Column | Meaning | Kind |
+|---|---|---|
+| X1 | Current assets | year-end balance |
+| X2 | Cost of goods sold | fiscal-year flow |
+| X3 | Depreciation and amortization | fiscal-year flow |
+| X4 | EBITDA | fiscal-year flow |
+| X5 | Inventory | year-end balance |
+| X6 | Net income | fiscal-year flow |
+| X7 | Total receivables | year-end balance |
+| X8 | Market value (market capitalization) | market |
+| X9 | Net sales | fiscal-year flow |
+| X10 | Total assets | year-end balance |
+| X11 | Total long-term debt | year-end balance |
+| X12 | EBIT | fiscal-year flow |
+| X13 | Gross profit | fiscal-year flow |
+| X14 | Total current liabilities | year-end balance |
+| X15 | Retained earnings | year-end balance |
+| X16 | Total revenue | fiscal-year flow |
+| X17 | Total liabilities | year-end balance |
+| X18 | Total operating expenses | fiscal-year flow |
+
+**Verified against the data.** If the names are right, the values must satisfy
+accounting relations. Each holds in at least 99.99% of the 78,682 rows (1–7 rows
+off per relation), and the audit fails if any relation drops below 99%:
+
+- gross profit = net sales − COGS (X13 = X9 − X2)
+- EBIT = EBITDA − D&A (X12 = X4 − X3)
+- EBITDA = total revenue − operating expenses (X4 = X16 − X18)
+- current assets ≤ total assets; inventory, receivables ≤ current assets;
+  current and long-term liabilities ≤ total liabilities; COGS ≤ operating expenses
+
+X9 (net sales) and X16 (total revenue) are identical in every row. Whether to
+drop one is a preprocessing decision (#46/#48).
+
+### Company IDs and year order
+
+All 8,971 IDs match `C_<number>`; there are no duplicate company/years; each
+company's rows are contiguous and in increasing year order in the file. Code must
+not rely on file order: use `sort_panel` (numeric company ID, then oldest year
+first). IDs are anonymised, so the CSV cannot show that an ID is the same legal
+entity in every year; this is taken from the publisher.
+
+### Target
+
+`anchor_targets` defines the target once for all models:
+
+- One observation per company, anchored at its **last recorded year *t***.
+- `target = 1` if the company's `status_label` is `failed`, otherwise `0`
+  (609 positives of 8,971 companies, 6.79%).
+- Intended meaning, from the publisher and Kaggle documentation: the fiscal year
+  before a Chapter 7/11 filing is labelled bankrupt "for the next year", so
+  `target = 1` means a filing in *t*+1.
+- Earlier rows of a failed company carry the same company label (4,611 rows)
+  and are **never** used as positives.
+
+**Why `target_verified` stays `false`.** The label consistency shows only that the
+label is company-level; it does not prove the timing:
+
+| Group | Companies | What the CSV cannot show |
+|---|---|---|
+| Failed, last year before 2018 | 573 | That the filing happened in *t*+1 (filing dates are not in the CSV) |
+| Failed, last year 2018 | 36 | The filing year falls outside the data |
+| Alive, last year 2018 | 2,687 | Their 2019 outcome; relies on the publisher's follow-up |
+| Alive, leave before 2018 | 5,675 | Why they left (merger, delisting, going private, …); their 0 relies on the publisher's labelling |
+
+So the target is "bankruptcy in *t*+1 according to the publisher", not an
+independently verified event. Results and the report should use that wording.

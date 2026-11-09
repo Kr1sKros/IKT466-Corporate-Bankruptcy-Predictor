@@ -5,7 +5,7 @@
     "file_name": "american_bankruptcy.csv",
     "size_bytes": 11254588,
     "sha256": "cff2c899a97ecd629415cb22f59186000e74e1c0a78cfae036c0a53025419b5e",
-    "audited_at": "2026-11-08T14:33:58+00:00"
+    "audited_at": "2026-11-09T08:58:27+00:00"
   },
   "measured": {
     "n_rows": 78682,
@@ -41,6 +41,12 @@
     ],
     "n_rows": 78682,
     "n_columns": 21
+  },
+  "company_ids_and_order": {
+    "company_id_format": "C_<number>",
+    "n_companies": 8971,
+    "companies_contiguous_in_file": true,
+    "years_increasing_within_company_in_file": true
   },
   "duplicates": {
     "duplicate_company_years": 0,
@@ -96,6 +102,118 @@
     },
     "all_zero_feature_rows": 0
   },
+  "feature_dictionary": {
+    "X1": {
+      "name": "Current assets",
+      "kind": "stock"
+    },
+    "X2": {
+      "name": "Cost of goods sold",
+      "kind": "flow"
+    },
+    "X3": {
+      "name": "Depreciation and amortization",
+      "kind": "flow"
+    },
+    "X4": {
+      "name": "EBITDA",
+      "kind": "flow"
+    },
+    "X5": {
+      "name": "Inventory",
+      "kind": "stock"
+    },
+    "X6": {
+      "name": "Net income",
+      "kind": "flow"
+    },
+    "X7": {
+      "name": "Total receivables",
+      "kind": "stock"
+    },
+    "X8": {
+      "name": "Market value (market capitalization)",
+      "kind": "market"
+    },
+    "X9": {
+      "name": "Net sales",
+      "kind": "flow"
+    },
+    "X10": {
+      "name": "Total assets",
+      "kind": "stock"
+    },
+    "X11": {
+      "name": "Total long-term debt",
+      "kind": "stock"
+    },
+    "X12": {
+      "name": "EBIT",
+      "kind": "flow"
+    },
+    "X13": {
+      "name": "Gross profit",
+      "kind": "flow"
+    },
+    "X14": {
+      "name": "Total current liabilities",
+      "kind": "stock"
+    },
+    "X15": {
+      "name": "Retained earnings",
+      "kind": "stock"
+    },
+    "X16": {
+      "name": "Total revenue",
+      "kind": "flow"
+    },
+    "X17": {
+      "name": "Total liabilities",
+      "kind": "stock"
+    },
+    "X18": {
+      "name": "Total operating expenses",
+      "kind": "flow"
+    }
+  },
+  "accounting_identities": {
+    "gross_profit = net_sales - cogs": {
+      "share_holding": 0.999975,
+      "rows_violating": 2
+    },
+    "ebit = ebitda - depreciation_amortization": {
+      "share_holding": 0.999962,
+      "rows_violating": 3
+    },
+    "ebitda = total_revenue - operating_expenses": {
+      "share_holding": 0.999949,
+      "rows_violating": 4
+    },
+    "current_assets <= total_assets": {
+      "share_holding": 0.999987,
+      "rows_violating": 1
+    },
+    "inventory <= current_assets": {
+      "share_holding": 0.999924,
+      "rows_violating": 6
+    },
+    "receivables <= current_assets": {
+      "share_holding": 0.999911,
+      "rows_violating": 7
+    },
+    "current_liabilities <= total_liabilities": {
+      "share_holding": 0.999975,
+      "rows_violating": 2
+    },
+    "long_term_debt <= total_liabilities": {
+      "share_holding": 0.999987,
+      "rows_violating": 1
+    },
+    "cogs <= operating_expenses": {
+      "share_holding": 0.999949,
+      "rows_violating": 4
+    }
+  },
   "identical_feature_columns": [
     [
       "X9",
@@ -115,6 +233,26 @@
     "failed_company_share": 0.067885,
     "failed_rows_at_terminal_year": 609,
     "failed_rows_before_terminal_year": 4611
+  },
+  "target": {
+    "definition": "One observation per company at anchor t = last recorded year; target = 1 if status_label is 'failed', else 0. Intended meaning: Chapter 7/11 filing in t+1 (publisher convention).",
+    "n_anchors": 8971,
+    "n_positive": 609,
+    "positive_share": 0.067885,
+    "positives_at_last_dataset_year": 36,
+    "negatives_at_last_dataset_year": 2687,
+    "negatives_leaving_panel_early": 5675,
+    "target_verified": false,
+    "evidence": [
+      "status_label is constant within every company (company-level label).",
+      "Earlier rows of a failed company repeat the company label, so only the last recorded year can match the documented year-level convention.",
+      "Publisher and Kaggle documentation: the fiscal year before a Chapter 7/11 filing is labelled bankrupt 'for the next year'."
+    ],
+    "limitations": [
+      "The filing date is not in the CSV, so it cannot show that a failed company's last year is the year before its filing.",
+      "Alive companies that leave the panel before the last dataset year have no observed t+1 (merger, delisting or going private are possible); their 0 rests on the publisher's labelling.",
+      "Companies whose anchor is the last dataset year have t+1 outside the data; their label rests on the publisher's follow-up."
+    ]
   },
   "history": {
     "first_year": 1999,
@@ -246,6 +384,7 @@
     "no_duplicate_company_years": true,
     "no_repeated_feature_rows_within_company": true,
     "labels_follow_documented_year_level_convention": false,
+    "feature_dictionary_consistent_with_accounting_identities": true,
     "not_verifiable_from_csv": [
       "whether values were synthetic or imputed by the publisher",
       "that the terminal year of a failed company precedes its filing",
