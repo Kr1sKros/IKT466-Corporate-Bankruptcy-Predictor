@@ -6,7 +6,8 @@ Usage (from the repository root):
 
 Writes data/splits/{train,validation,test}.csv (gitignored) and
 results/metrics/split_summary.json. Exits with status 1 if the data fails
-validation or the files differ from the checksums in configs/config.yaml.
+validation or the generated files differ from the checksums in
+configs/config.yaml; in that case the existing files and summary are kept.
 Model runners must load the split with ``preprocessing.load_splits``.
 """
 
@@ -19,11 +20,12 @@ import yaml
 
 from data_loader import download_dataset, load_data
 from preprocessing import (
+    SplitChecksumError,
     check_split_matches_data,
     load_splits,
-    save_splits,
     split_companies,
     split_summary,
+    write_verified_splits,
 )
 from sequences import history_coverage
 from validation import (
@@ -71,8 +73,15 @@ def main() -> int:
         seed=config["random_seed"],
     )
     directory = REPO_ROOT / split_config["directory"]
-    checksums = save_splits(companies, directory)
-    loaded = load_splits(directory)
+    expected = split_config.get("sha256") or {}
+    try:
+        # Checked before anything is replaced: on a mismatch the approved
+        # split files and summary stay as they are.
+        checksums = write_verified_splits(companies, directory, expected_sha256=expected)
+    except SplitChecksumError as error:
+        print(error, file=sys.stderr)
+        return 1
+    loaded = load_splits(directory, expected_sha256=expected)
     check_split_matches_data(loaded, data)
 
     summary = {
@@ -97,16 +106,6 @@ def main() -> int:
             f"failed {part['n_failed']:3} ({part['failed_share']:.2%}) | years {shares}"
         )
     print(f"Saved split to {directory} and summary to {args.summary}")
-
-    expected = split_config.get("sha256") or {}
-    mismatched = [n for n, sha in checksums.items() if expected.get(n) not in (None, sha)]
-    if mismatched:
-        print(
-            f"Split files {mismatched} differ from configs/config.yaml; "
-            "the dataset, seed or library versions have changed.",
-            file=sys.stderr,
-        )
-        return 1
     if not expected:
         print("No split checksums in the config yet; record these:", json.dumps(checksums))
     return 0

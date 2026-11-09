@@ -18,6 +18,8 @@ Dataset validation (schema, duplicates, labels, history) lives in
 from __future__ import annotations
 
 import hashlib
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -112,6 +114,41 @@ def save_splits(companies: pd.DataFrame, directory: str | Path) -> dict[str, str
         part = part.iloc[np.argsort(_company_number(part), kind="stable")]
         part[SPLIT_COLUMNS].to_csv(path, index=False, lineterminator="\n")
         checksums[name] = file_sha256(path)
+    return checksums
+
+
+class SplitChecksumError(ValueError):
+    """A newly generated split differs from the approved checksums."""
+
+
+def write_verified_splits(
+    companies: pd.DataFrame,
+    directory: str | Path,
+    *,
+    expected_sha256: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Write the split only if it matches ``expected_sha256``.
+
+    The files are first written to a temporary folder inside ``directory`` and
+    checked there. On a mismatch nothing in ``directory`` is changed and
+    ``SplitChecksumError`` is raised; otherwise the files replace the old ones.
+    Without expected checksums (first run) the files are written as they are.
+    """
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=directory, prefix=".tmp-") as staging:
+        checksums = save_splits(companies, staging)
+        expected = expected_sha256 or {}
+        mismatched = [n for n, sha in checksums.items() if expected.get(n) not in (None, sha)]
+        if mismatched:
+            raise SplitChecksumError(
+                f"Generated split files {mismatched} differ from the approved "
+                "checksums in configs/config.yaml (dataset, seed, fractions or "
+                "library versions changed). Existing files were left unchanged."
+            )
+        targets = split_paths(directory)
+        for name, path in split_paths(staging).items():
+            os.replace(path, targets[name])
     return checksums
 
 

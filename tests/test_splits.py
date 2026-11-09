@@ -1,16 +1,24 @@
 """Company-level split: disjoint, stratified, persisted and never regenerated."""
 
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
 
 from preprocessing import (
+    SplitChecksumError,
     check_split_matches_data,
     company_table,
     load_splits,
     save_splits,
     split_companies,
     split_summary,
+    write_verified_splits,
 )
 from validation import FEATURE_COLUMNS
 
@@ -133,3 +141,78 @@ def test_tiny_strata_give_a_clear_error():
     panel = explicit_panel({f"C_{i}": [2010, 2011] for i in range(1, 11)}, failed={"C_1"})
     with pytest.raises(ValueError, match="Strata too small"):
         split_companies(panel, train_fraction=0.7, validation_fraction=0.15, seed=42)
+
+
+def _snapshot(directory):
+    return {p.name: p.read_bytes() for p in sorted(directory.iterdir())}
+
+
+def test_mismatched_split_leaves_approved_files_untouched(tmp_path, panel):
+    approved = split_companies(panel, train_fraction=0.7, validation_fraction=0.15, seed=42)
+    checksums = write_verified_splits(approved, tmp_path)
+    before = _snapshot(tmp_path)
+
+    changed = split_companies(panel, train_fraction=0.7, validation_fraction=0.15, seed=7)
+    with pytest.raises(SplitChecksumError, match="left unchanged"):
+        write_verified_splits(changed, tmp_path, expected_sha256=checksums)
+    # Same files, same bytes, and no leftover temporary folder.
+    assert _snapshot(tmp_path) == before
+
+    # A matching split is accepted and gives the same files.
+    assert write_verified_splits(approved, tmp_path, expected_sha256=checksums) == checksums
+    assert _snapshot(tmp_path) == before
+
+
+def _identity_consistent(frame: pd.DataFrame) -> pd.DataFrame:
+    """Replace features with values that pass the accounting-identity checks."""
+    r = np.arange(len(frame), dtype=float)
+    f = {
+        "X9": 800 + 7 * r, "X2": 500 + 3 * r, "X18": 700 + 5 * r, "X3": 20 + 0.25 * r,
+        "X10": 2000 + 11 * r, "X1": 900 + 6 * r, "X5": 100 + 1.5 * r, "X7": 150 + 2.5 * r,
+        "X17": 1200 + 9 * r, "X14": 400 + 3.5 * r, "X11": 310 + 4.5 * r,
+        "X6": 50 + 0.5 * r, "X8": 3000 + 13 * r, "X15": -200 + 8 * r,
+    }
+    f["X16"] = f["X9"] + 0.5
+    f["X13"] = f["X9"] - f["X2"]
+    f["X4"] = f["X16"] - f["X18"]
+    f["X12"] = f["X4"] - f["X3"]
+    return frame.assign(**f)
+
+
+def test_prepare_data_keeps_files_and_summary_when_seed_changes(tmp_path, monkeypatch, panel):
+    script = Path(__file__).resolve().parents[1] / "scripts" / "prepare_data.py"
+    spec = importlib.util.spec_from_file_location("prepare_data", script)
+    prepare_data = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(prepare_data)
+
+    csv = tmp_path / "data.csv"
+    _identity_consistent(panel).to_csv(csv, index=False)
+    splits, summary, config_path = tmp_path / "splits", tmp_path / "summary.json", tmp_path / "config.yaml"
+    config = {
+        "random_seed": 42,
+        "split": {
+            "train_fraction": 0.7, "validation_fraction": 0.15, "test_fraction": 0.15,
+            "stratify_by": ["target", "history_group"], "directory": str(splits), "sha256": None,
+        },
+    }
+
+    def run() -> int:
+        config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+        monkeypatch.setattr(sys, "argv", [
+            "prepare_data.py", "--csv", str(csv), "--config", str(config_path),
+            "--summary", str(summary),
+        ])
+        return prepare_data.main()
+
+    assert run() == 0
+    config["split"]["sha256"] = json.loads(summary.read_text())["sha256"]
+    approved_files, approved_summary = _snapshot(splits), summary.read_bytes()
+
+    config["random_seed"] = 7
+    assert run() == 1
+    assert _snapshot(splits) == approved_files
+    assert summary.read_bytes() == approved_summary
+
+    config["random_seed"] = 42
+    assert run() == 0
+    assert _snapshot(splits) == approved_files
