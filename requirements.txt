@@ -3,6 +3,7 @@ pandas>=2.0,<3.0
 scikit-learn
 xgboost
 torch
+optuna>=4.0
 matplotlib
 seaborn
 pyyaml
