@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from preprocessing import (FittedPreprocessor, company_table, fit_preprocessor,
+from preprocessing import (FittedPreprocessor, company_table, fit_preprocessor, signed_log1p,
                            training_fit_rows, transform_features, transform_histories)
 from sequences import create_histories, flatten_histories, valid_step_mask, valid_steps
 from validation import FEATURE_COLUMNS
@@ -15,6 +15,8 @@ from validation import FEATURE_COLUMNS
 # five_year:   C_1 2002-2006 -> 2..6, C_2 2001, 2004 -> 1, 4. C_1 2000-2001 excluded.
 LATEST_FIT = np.array([6., 4.])
 FIVE_FIT = np.array([2., 3., 4., 5., 6., 1., 4.])
+# The scaler is fitted on signed log1p of these values (#87).
+LATEST_LOG, FIVE_LOG = signed_log1p(LATEST_FIT), signed_log1p(FIVE_FIT)
 
 
 @pytest.fixture
@@ -38,10 +40,10 @@ def test_each_condition_is_fitted_on_its_own_training_rows(panel):
     data['X18'] = 7.
     fitted = fit_preprocessor(data, splits)
     latest, five = fitted.record['conditions']['latest_year'], fitted.record['conditions']['five_year']
-    assert latest['mean'][:17] == [LATEST_FIT.mean()] * 17
-    assert latest['scale'][:17] == [LATEST_FIT.std()] * 17
-    np.testing.assert_allclose(five['mean'][:17], FIVE_FIT.mean())
-    np.testing.assert_allclose(five['scale'][:17], FIVE_FIT.std())
+    np.testing.assert_allclose(latest['mean'][:17], LATEST_LOG.mean())
+    np.testing.assert_allclose(latest['scale'][:17], LATEST_LOG.std())
+    np.testing.assert_allclose(five['mean'][:17], FIVE_LOG.mean())
+    np.testing.assert_allclose(five['scale'][:17], FIVE_LOG.std())
     assert latest['scale'][17] == five['scale'][17] == 1.  # constant column
     assert latest['fitting_years'] == {'C_1': [2006], 'C_2': [2004]}
     assert five['fitting_years'] == {'C_1': [2002, 2003, 2004, 2005, 2006], 'C_2': [2001, 2004]}
@@ -79,7 +81,7 @@ def test_fit_rows_are_the_real_training_steps_of_the_inputs(panel, condition):
 def test_all_eight_paths_preserve_ids_padding_and_offsets(panel, model, condition):
     data, splits = panel
     fitted = fit_preprocessor(data, splits)
-    fit = LATEST_FIT if condition == 'latest_year' else FIVE_FIT
+    fit = LATEST_LOG if condition == 'latest_year' else FIVE_LOG
     raw = create_histories(data, condition=condition)
     before = raw.features.copy()
     result = transform_histories(raw, fitted, model=model)
@@ -87,7 +89,7 @@ def test_all_eight_paths_preserve_ids_padding_and_offsets(panel, model, conditio
     mask = valid_step_mask(result)
     expected = raw.features[mask, :18]
     if model != 'xgboost':
-        expected = (expected - fit.mean()) / fit.std()
+        expected = (signed_log1p(expected) - fit.mean()) / fit.std()
     np.testing.assert_allclose(result.features[mask, :18], expected, rtol=1e-6)
     assert (result.features[~mask] == 0).all()
     np.testing.assert_array_equal(result.lengths, raw.lengths)
@@ -101,7 +103,7 @@ def test_all_eight_paths_preserve_ids_padding_and_offsets(panel, model, conditio
         assert flat.loc[1, 'present_r2'] == 0
         assert flat.loc[1, 'years_before_anchor_r1'] == 3
         assert flat.loc[1, 'X1_r2'] == 0
-        scaled_r0 = 4 if model == 'xgboost' else (4 - fit.mean()) / fit.std()
+        scaled_r0 = 4 if model == 'xgboost' else (np.log1p(4) - fit.mean()) / fit.std()
         assert flat.loc[1, 'X1_r0'] == pytest.approx(scaled_r0)
 
 
@@ -176,7 +178,7 @@ def test_preparation_script_roundtrip(panel, tmp_path, monkeypatch):
                         '--config', str(cfg), '--output', str(output), '--report', str(report)])
     module.main()
     loaded = FittedPreprocessor.load(output)
-    assert loaded.record['conditions']['latest_year']['mean'] == [LATEST_FIT.mean()] * 18
+    np.testing.assert_allclose(loaded.record['conditions']['latest_year']['mean'], LATEST_LOG.mean())
     assert loaded.record['provenance']['split_sha256'] == hashes
     conditions = json.loads(report.read_text())['conditions']
     assert conditions['latest_year']['n_observations'] == 2
@@ -185,3 +187,31 @@ def test_preparation_script_roundtrip(panel, tmp_path, monkeypatch):
     cfg.write_text(yaml.safe_dump(config))
     with pytest.raises(ValueError, match='policy'):
         module.main()
+
+
+def test_signed_log1p_keeps_order_sign_and_zero():
+    values = np.array([-1e9, -5., -1., 0., 1., 5., 1e9])
+    out = signed_log1p(values)
+    assert (np.diff(out) > 0).all() and out[3] == 0
+    np.testing.assert_allclose(out, -out[::-1])
+    assert out[-1] == pytest.approx(np.log1p(1e9))  # about 20.7, not 1e9
+
+
+def test_heavy_tail_outlier_no_longer_squeezes_the_rest(panel):
+    """One giant training company (#87). Plain z-scores squeeze every normal
+    company into nearly the same value; signed log1p keeps them apart."""
+    data, splits = panel
+    giant = (data.company_name == 'C_1') & (data.year == 2006)
+    data.loc[giant, FEATURE_COLUMNS] = 1e9
+    fitted = fit_preprocessor(data, splits)
+    history = create_histories(data, condition='five_year')
+    mask = valid_step_mask(history)
+    raw = history.features[mask, :18].astype(float)
+    scaled = transform_histories(history, fitted, model='mlp').features[mask, :18]
+    plain = (raw - raw[:7].mean(0)) / raw[:7].std(0)  # the old StandardScaler on the 7 fit rows
+    normal = slice(0, 4)  # C_1 2002-2005: values 2..5
+    assert np.ptp(plain[normal, 0]) < 1e-8          # indistinguishable under plain z-scores
+    assert np.ptp(scaled[normal, 0]) > 0.1          # still apart after signed log1p
+    assert np.abs(scaled).max() < 3
+    # XGBoost still receives the untouched dollar values.
+    np.testing.assert_array_equal(transform_histories(history, fitted, model='xgboost').features[mask, :18], raw)

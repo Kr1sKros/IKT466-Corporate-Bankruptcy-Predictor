@@ -267,7 +267,7 @@ def test_inputs_match_merged_lr_and_gru(panel, condition):
     np.testing.assert_array_equal(xgb_histories.features, raw.features)
     np.testing.assert_array_equal(lr_histories.features, gru_histories.features)
     np.testing.assert_array_equal(xgb_histories.lengths, gru_histories.lengths)
-    model = GRUClassifier(len(gru_histories.step_columns), hidden_size=4)
+    model = GRUClassifier(condition, hidden_size=4)
     assert predict_proba(model, gru_histories).shape == (len(ids),)
     if condition == 'five_year':
         flat, _ = flatten_histories(xgb_histories)
