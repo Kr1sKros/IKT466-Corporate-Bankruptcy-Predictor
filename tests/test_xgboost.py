@@ -131,6 +131,17 @@ def test_failed_trials_recorded_and_never_selected(panel, search, tmp_path, monk
                for t in json.loads((destination / 'trials.json').read_text()))
 
 
+def test_post_pilot_configuration_runs_a_real_trial(panel, tmp_path):
+    search = yaml.safe_load((ROOT / 'configs/config.yaml').read_text())['models']['xgboost']['search']
+    train, tm = features(panel)
+    validation, vm = features(panel, partition='validation')
+    model, selection = xgb.tune_condition(
+        train, tm.target, validation, vm.target, directory=tmp_path / 'post_pilot',
+        study_name='post_pilot', seed=42, sampler_seed=42, trials=1, search=search)
+    assert np.isfinite(model.predict_proba(validation)).all()
+    assert selection['threshold_source'] == 'validation'
+
+
 def prepare_run(panel, tmp_path, search):
     data, companies = panel
     csv = tmp_path / 'synthetic.csv'

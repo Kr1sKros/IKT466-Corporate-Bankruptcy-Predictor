@@ -37,11 +37,43 @@ and the shared `study_plan.tuning` settings: seeded TPE, validation Average
 Precision, 20 attempted trials, sequential execution and no pruning. Seeds and
 one CPU thread are fixed; objective is binary logistic and tree method is `hist`.
 
-The initial space is 100–400 trees, depth 2–6, learning rate 0.02–0.2 (log),
-minimum child weight 1–10 (log), row/column subsampling 0.7–1, L2 regularization
-0.1–10 (log), and L1 regularization 0–1. These are declared starting ranges, not
-claims of optimal settings. A pilot review may change them before the main
-experiments; paired conditions must receive the same changes.
+The post-pilot space is 100–1000 trees, depth 2–10, learning rate 0.01–0.3 (log),
+minimum child weight 1–10 (log), row/column subsampling 0.5–1, L2 regularization
+0.1–10 (log), and L1 regularization 0.001–10 (log). Both conditions use this
+single configuration. These ranges do not claim to contain optimal settings.
+
+### Validation-only pilot review — 11 November 2026
+
+The protocol permits one documented pilot review before the main searches.
+[The PR reviewer](https://github.com/Kr1sKros/IKT466-Corporate-Bankruptcy-Predictor/pull/85#pullrequestreview-5858019974)
+reported running both original studies on the audited real data, using validation
+only and no test data. Reported best validation AP was 0.350 for latest_year and
+0.457 for five_year. The selected five_year trial had learning rate 0.194,
+subsample 0.706 and L1 regularization 0.855; depth 6 occurred in three of the top
+five trials. These observations motivate exploring beyond the original bounds,
+but 20 trials and near-boundary selections do not prove that the bounds limited
+performance or that a wider search will improve it.
+
+The reviewer-reported pilot was not independently rerun as part of this change;
+its original study/trial artifacts should be retained as pilot evidence, separate
+from main-search outputs. The accepted changes apply to **both** input conditions:
+
+| Parameter | Pilot range | Main-search range |
+|---|---|---|
+| `n_estimators` | 100–400 | 100–1000 |
+| `max_depth` | 2–6 | 2–10 |
+| `learning_rate` | 0.02–0.2, log | 0.01–0.3, log |
+| `subsample` | 0.7–1 | 0.5–1 |
+| `colsample_bytree` | 0.7–1 | 0.5–1 |
+| `reg_alpha` | 0–1, linear | 0.001–10, log |
+
+The log-scaled L1 search excludes exact zero; its lower endpoint represents weak
+positive L1 regularization. Minimum child weight, L2 bounds, preprocessing,
+training-derived class-weight bounds, seeds and the common **20-attempt** budget
+remain unchanged. Start new output directories for the main searches; do not
+resume pilot studies with different ranges or select between pilot and main
+models using test outcomes. Any later search redesign must be disclosed rather
+than treated as another unrecorded pilot review.
 
 Class-weight selection is a continuous log search from 1 to the training
 negative/positive ratio returned by `leakage.class_weight_bounds`, matching the
