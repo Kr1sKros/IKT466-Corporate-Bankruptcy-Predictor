@@ -208,8 +208,8 @@ def check_preprocessor(preprocessor: FittedPreprocessor, data: pd.DataFrame,
 def class_weight_bounds(companies: pd.DataFrame) -> dict[str, Any]:
     """Class balance of the **training** partition only.
 
-    Runners (#53-#56) must derive class-weight search bounds (LR balanced
-    weights, XGBoost scale_pos_weight, MLP/GRU pos_weight) from this, never from
+    Runners (#53-#56) must derive positive-weight search bounds (LR class_weight
+    {0: 1, 1: w}, XGBoost scale_pos_weight, MLP/GRU pos_weight) from this, never from
     validation/test labels.
     """
     train = companies[companies["split"].eq("train")]

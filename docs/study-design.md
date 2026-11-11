@@ -94,10 +94,11 @@ Implemented in `src/sequences.py` (`create_histories`, `tabular_inputs`).
   ranges where applicable; input dimensions differ by construction. Declare any
   necessary exceptions before the main searches. Record ranges/distributions,
   sampler/training seeds and software versions.
-- Optuna selects hyperparameters, including class/loss weights. LR searches
-  `class_weight` (unweighted versus training-label-derived balanced weights);
-  XGBoost searches `scale_pos_weight`; MLP/GRU search loss `pos_weight`. Numerical
-  ranges use training-label statistics only and include the unweighted option.
+- Optuna selects hyperparameters, including continuous class/loss weights on a
+  log scale from 1 to the training negative/positive ratio, obtained with
+  `leakage.class_weight_bounds`. LR uses `class_weight={0: 1, 1: w}`, XGBoost
+  uses `scale_pos_weight=w`, and MLP/GRU use `pos_weight=w`. The unweighted value
+  1 is in the domain; a continuous sampler need not draw the exact endpoint.
   Validation/test prevalence is never changed by resampling or reweighting.
 - Coefficients, tree parameters and neural network weights are fitted by each
   model's training algorithm inside a trial. Optuna does not directly search all
@@ -107,7 +108,8 @@ Implemented in `src/sequences.py` (`create_histories`, `tabular_inputs`).
   objective, configuration, training/checkpoint provenance and elapsed time.
 - Select classification thresholds on validation only using one declared rule.
   Freeze the selected configuration/checkpoint and threshold before final test
-  evaluation. Optional seed repeats must use a predefined protocol, not select
+  evaluation. Final test evaluation runs only after all eight studies and their
+  thresholds are frozen; individual model runners remain validation-only. Optional seed repeats must use a predefined protocol, not select
   the best test seed. Never use test AP to choose studies, budgets or settings.
 
 Sources: [Optuna search spaces](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/002_configurations.html),

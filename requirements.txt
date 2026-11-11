@@ -8,3 +8,6 @@ seaborn
 pyyaml
 pytest
 kagglehub>=1.0.2,<2.0
+optuna>=4,<6
+joblib
+threadpoolctl

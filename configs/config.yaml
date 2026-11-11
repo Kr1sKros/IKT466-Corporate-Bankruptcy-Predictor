@@ -97,9 +97,14 @@ preprocessing:
 
 models:
   logistic_regression:
-    C: null
-    max_iter: null
-    class_weight: null
+    solver: lbfgs
+    regularization: L2
+    max_iter: 5000  # Fixed convergence cap, not an Optuna parameter.
+    tol: 0.0001
+    search:
+      C_low: 0.0001
+      C_high: 10000.0
+      positive_class_weight: log_1_to_training_ratio
   xgboost:
     n_estimators: null
     max_depth: null
@@ -121,6 +126,7 @@ evaluation:
   main_metric: average_precision  # Chosen PR-AUC summary; document convention.
   additional_metrics: [precision, recall, f1, accuracy, roc_auc, confusion_matrix]
   decision_threshold: null  # Select on validation data only.
+  threshold_rule: max_f1_highest_threshold_on_tie
   identical_test_companies: true
   error_analysis: [missed_bankruptcies, false_alarms]
 
