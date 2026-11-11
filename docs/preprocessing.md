@@ -128,5 +128,12 @@ seeds, or 5 sampler seeds for LR; full tables and settings are in #87.
 | GRU, 20-trial Optuna | 0.288 | 0.382 |
 | XGBoost, fixed settings | 0.315 - 0.346 | identical |
 
-five_year results are being added to #87. LR loses slightly on latest_year; one
-shared policy for the three scaled models is kept and this trade-off is accepted.
+| five_year, one run each (seed 42) | Plain standard | signed log1p + standard |
+|---|---|---|
+| LR, 20-trial Optuna | 0.298 | 0.387 |
+| MLP, fixed settings | 0.380 | 0.506 |
+| GRU, fixed settings | 0.426 | 0.443 |
+
+LR loses slightly on latest_year but gains on five_year; one shared policy for the
+three scaled models is kept and this trade-off is accepted. XGBoost stays on raw
+values.
