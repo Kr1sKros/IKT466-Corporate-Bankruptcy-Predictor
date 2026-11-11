@@ -80,8 +80,17 @@ split:
     test: f4c9307d3ca500e6cb617a063f6b7d546b13cfcbc93504c00bc265d6c4bdc5fa
 
 preprocessing:
-  missing_value_strategy: null
-  scaling_strategy: null
+  missing_value_strategy: error  # Audited financial cells are complete; no imputation.
+  scaling_strategy: standard  # Fixed; never selected by Optuna.
+  fit_population: training_company_final_year
+  reuse_across_input_conditions: true
+  model_scaling:
+    logistic_regression: standard
+    xgboost: identity
+    mlp: standard
+    gru: standard
+  relative_offsets: unchanged
+  padding: zero_after_transform
   fit_on_training_only: true
 
 models:

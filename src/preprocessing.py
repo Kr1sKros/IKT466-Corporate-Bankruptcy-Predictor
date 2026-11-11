@@ -1,4 +1,4 @@
-"""Company-level train/validation/test splits (issue #47) and pending scaling.
+"""Company-level splits (#47) and fixed training-anchor preprocessing (#46).
 
 Every company appears in exactly one partition, together with all of its years.
 The split is stratified by outcome and by history length (number of recorded
@@ -223,14 +223,152 @@ def split_summary(companies: pd.DataFrame) -> dict[str, Any]:
     return summary
 
 
-def fit_preprocessor(training_features: pd.DataFrame) -> object:
-    """Fit missing-value handling and scaling using training features only."""
-    # TODO (#46): Choose scaling; for GRU inputs fit only on valid (unpadded)
-    # timesteps, e.g. sequences.valid_steps(histories).
-    raise NotImplementedError("Training-only preprocessing is pending.")
+def training_anchor_rows(data: pd.DataFrame, companies: pd.DataFrame) -> pd.DataFrame:
+    """Select exactly one final-year financial row per persisted training ID."""
+    from validation import FEATURE_COLUMNS, check_duplicates, check_company_ids_and_order
+    check_company_ids_and_order(data)
+    check_duplicates(data)
+    if companies[COMPANY_COLUMN].duplicated().any() or companies['split'].isna().any():
+        raise ValueError("Persisted company partitions must be unique and non-null")
+    if not companies['split'].isin(SPLIT_NAMES).all():
+        raise ValueError("Unknown split partition")
+    check_split_matches_data(companies, data)
+    train = companies.loc[companies['split'].eq('train'), [COMPANY_COLUMN, 'anchor_year']]
+    if train.empty:
+        raise ValueError("Training partition is empty")
+    rows = train.merge(data, left_on=[COMPANY_COLUMN, 'anchor_year'],
+                       right_on=[COMPANY_COLUMN, YEAR_COLUMN], validate='one_to_one')
+    rows = rows.iloc[np.argsort(_company_number(rows), kind='stable')].reset_index(drop=True)
+    _financial_values(rows[FEATURE_COLUMNS])
+    return rows
 
 
-def transform_features(features: pd.DataFrame, preprocessor: object) -> np.ndarray:
-    """Transform features using an already fitted training preprocessor."""
-    # TODO (#46): Preserve feature order and never refit on validation/test.
-    raise NotImplementedError("Feature transformation is pending.")
+def _financial_values(features: pd.DataFrame) -> np.ndarray:
+    from validation import FEATURE_COLUMNS, validate_predictor_columns
+    columns = validate_predictor_columns(features.columns)
+    if columns != list(FEATURE_COLUMNS):
+        raise ValueError("Financial columns must be exactly X1-X18 in audited order")
+    if any(not pd.api.types.is_numeric_dtype(dtype) for dtype in features.dtypes):
+        raise ValueError("Financial values must be numeric")
+    values = features.to_numpy(dtype=float)
+    if not np.isfinite(values).all():
+        raise ValueError("Missing/nonfinite financial cells are not history padding; no imputation is configured")
+    return values
+
+
+class AnchorPreprocessor:
+    """Fixed transform shared across input conditions, fitted on training anchors.
+
+    Numeric state is saved as JSON, with explicit feature schemas and fitting IDs.
+    """
+
+    def __init__(self, record):
+        self.record = record
+        self._validate_record()
+
+    def _validate_record(self):
+        from sequences import step_columns, tabular_columns
+        from validation import FEATURE_COLUMNS
+        r = self.record
+        if r['schema_version'] != 1 or r['strategy'] != 'standard' or r['fit_population'] != 'training_company_final_year':
+            raise ValueError("Unsupported preprocessing contract")
+        if r['financial_columns'] != list(FEATURE_COLUMNS):
+            raise ValueError("Saved financial feature order differs")
+        for condition in ('latest_year', 'five_year'):
+            if r['schemas'][condition] != {'sequence': step_columns(condition), 'tabular': tabular_columns(condition)}:
+                raise ValueError("Saved derived feature schema differs")
+        mean, scale = np.asarray(r['mean'], dtype=float), np.asarray(r['scale'], dtype=float)
+        if mean.shape != (18,) or scale.shape != (18,) or not np.isfinite(mean).all() or not np.isfinite(scale).all() or (scale <= 0).any():
+            raise ValueError("Invalid saved standardization parameters")
+
+    def transform(self, features: pd.DataFrame, *, model: str) -> np.ndarray:
+        self._validate_record()
+        if model not in ('logistic_regression', 'xgboost', 'mlp', 'gru'):
+            raise ValueError("Unknown model")
+        values = _financial_values(features)
+        if model != 'xgboost':
+            values = (values - np.asarray(self.record['mean'])) / np.asarray(self.record['scale'])
+        if not np.isfinite(values).all():
+            raise ValueError("Transformed financial values overflowed")
+        return values
+
+    def save(self, path: str | Path) -> None:
+        import json
+        self._validate_record()
+        text = json.dumps(self.record, indent=2, sort_keys=True, allow_nan=False)
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text + '\n', encoding='utf-8')
+
+    @classmethod
+    def load(cls, path: str | Path):
+        import json
+        return cls(json.loads(Path(path).read_text(encoding='utf-8')))
+
+
+def fit_preprocessor(data: pd.DataFrame, companies: pd.DataFrame) -> AnchorPreprocessor:
+    """Fit once on one final-year row per training company, never older years.
+
+    Reuse this same object for all eight experiments; XGBoost uses its identity
+    path. No validation/test values contribute to fitted numerical statistics.
+    """
+    from sklearn.preprocessing import StandardScaler
+    from sequences import step_columns, tabular_columns
+    from validation import FEATURE_COLUMNS
+    rows = training_anchor_rows(data, companies)
+    scaler = StandardScaler().fit(_financial_values(rows[FEATURE_COLUMNS]))
+    return AnchorPreprocessor({
+        'schema_version': 1, 'strategy': 'standard',
+        'fit_population': 'training_company_final_year',
+        'financial_columns': list(FEATURE_COLUMNS),
+        'mean': scaler.mean_.tolist(), 'scale': scaler.scale_.tolist(),
+        'variance': scaler.var_.tolist(), 'n_training_companies': len(rows),
+        'fitting_observations': rows[[COMPANY_COLUMN, 'anchor_year']].to_dict(orient='records'),
+        'model_strategies': {'logistic_regression': 'standard', 'mlp': 'standard',
+                             'gru': 'standard', 'xgboost': 'identity'},
+        'schemas': {c: {'sequence': step_columns(c), 'tabular': tabular_columns(c)}
+                    for c in ('latest_year', 'five_year')},
+        'missing_values': 'error', 'relative_offsets': 'unchanged',
+        'padding': 'zero_after_transform',
+    })
+
+
+def transform_features(features: pd.DataFrame, preprocessor: AnchorPreprocessor,
+                       *, model: str) -> np.ndarray:
+    """Transform financial rows in audited order without refitting."""
+    return preprocessor.transform(features, model=model)
+
+
+def transform_histories(histories, preprocessor: AnchorPreprocessor, *, model: str):
+    """Transform only real financial steps, preserving offsets, lengths and IDs.
+
+    Flatten the returned histories for tabular models so the same transformation
+    is used at every recency slot. Padding is always restored to zero.
+    """
+    from dataclasses import replace
+    from sequences import step_columns, valid_step_mask
+    from validation import FEATURE_COLUMNS
+    if histories.condition not in ('latest_year', 'five_year'):
+        raise ValueError("Preprocessing supports latest_year and five_year only")
+    capacity = 1 if histories.condition == 'latest_year' else 5
+    if histories.step_columns != step_columns(histories.condition):
+        raise ValueError("Unexpected sequence feature order")
+    if histories.features.shape != (len(histories.lengths), capacity, len(histories.step_columns)):
+        raise ValueError("Unexpected sequence shape")
+    lengths = np.asarray(histories.lengths)
+    if lengths.dtype.kind not in 'iu' or (lengths < 1).any() or (lengths > capacity).any():
+        raise ValueError("Invalid real sequence lengths")
+    mask = valid_step_mask(histories)
+    real = histories.features[mask].astype(float)
+    if not np.isfinite(real).all():
+        raise ValueError("Nonfinite values in real observations")
+    real[:, :len(FEATURE_COLUMNS)] = preprocessor.transform(
+        pd.DataFrame(real[:, :len(FEATURE_COLUMNS)], columns=FEATURE_COLUMNS), model=model)
+    values = np.zeros(histories.features.shape, dtype=np.float32)
+    with np.errstate(over='ignore'):
+        values[mask] = real
+    if not np.isfinite(values).all():
+        raise ValueError("Transformed input overflows float32")
+    return replace(histories, features=values, lengths=histories.lengths.copy(),
+                   targets=histories.targets.copy(), metadata=histories.metadata.copy(),
+                   step_columns=list(histories.step_columns))
