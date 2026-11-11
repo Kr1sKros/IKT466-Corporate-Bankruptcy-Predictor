@@ -238,3 +238,28 @@ def test_lr_and_xgboost_share_tuning_protocol(panel, search, tmp_path):
     for key in ['objective', 'attempted_trials', 'n_jobs', 'pruning', 'sampler_seed', 'training_seed']:
         assert protocols[0][key] == protocols[1][key]
     assert bounds == [(1., 3., True), (1., 3., True)]
+
+
+@pytest.mark.parametrize('condition', ['latest_year', 'five_year'])
+def test_inputs_match_merged_lr_and_gru(panel, condition):
+    import torch
+    from models.gru_model import GRUClassifier, predict_proba
+    data, companies = panel
+    preprocessor = fit_preprocessor(data, companies)
+    ids = companies.loc[companies.split.eq('validation'), 'company_name']
+    raw = create_histories(data, condition=condition, companies=ids)
+    xgb_histories = transform_histories(raw, preprocessor, model='xgboost')
+    lr_histories = transform_histories(raw, preprocessor, model='logistic_regression')
+    gru_histories = transform_histories(raw, preprocessor, model='gru')
+    pd.testing.assert_frame_equal(xgb_histories.metadata, lr_histories.metadata)
+    pd.testing.assert_frame_equal(xgb_histories.metadata, gru_histories.metadata)
+    np.testing.assert_array_equal(xgb_histories.features, raw.features)
+    np.testing.assert_array_equal(lr_histories.features, gru_histories.features)
+    np.testing.assert_array_equal(xgb_histories.lengths, gru_histories.lengths)
+    model = GRUClassifier(len(gru_histories.step_columns), hidden_size=4)
+    assert predict_proba(model, gru_histories).shape == (len(ids),)
+    if condition == 'five_year':
+        flat, _ = flatten_histories(xgb_histories)
+        assert flat.shape[1] == 100 and gru_histories.max_steps == 5
+    else:
+        assert gru_histories.features.shape[1:] == (1, 18)
