@@ -1,95 +1,70 @@
-# Logistic Regression experiments (#53)
-
-Run from the repository root with project dependencies installed:
+# Logistic Regression selection (#53): validation only
 
 ```powershell
-python scripts/train_logistic.py --csv PATH_TO_AUDITED_CSV --output results/models/lr_run_01
+python scripts/prepare_preprocessing.py --csv PATH_TO_AUDITED_CSV
+python scripts/train_logistic.py --csv PATH_TO_AUDITED_CSV --preprocessor results/models/preprocessor.json --output results/models/lr_validation_01
 ```
 
-The output directory must be new. Existing studies are never silently resumed or
-replaced. The command loads the shared persisted train/validation/test split and
-checks the approved split and CSV hashes, company disjointness and anchors.
-It reuses shared data loading, input construction, per-condition preprocessing,
-metrics, seed settings and provenance helpers.
+Run from the repository root with dependencies installed. The output directory
+must be new. The runner loads the shared preprocessor, verifies its dataset/split
+provenance and calls the #52 audit. That audit fits a temporary training-only
+reference to verify statistics; inference uses the loaded artifact, not a newly
+fitted replacement. A snapshot is saved with the run. Per-condition scaling stays
+fixed, outside Optuna, as specified in docs/preprocessing.md.
 
-## Predeclared selection
+## Search and selection
 
-Two independent Optuna studies: logistic_regression x latest_year/five_year.
-Each uses sequential seeded TPE (42), no pruning, and the shared budget of
-20 attempted trials. Both use the same declared search: log-uniform C in
-[0.0001, 10000] and class_weight in [None, balanced]. lbfgs fits L2-regularized
-coefficients inside each trial. The fixed solver cap is 5,000 iterations and
-its tolerance is 0.0001; these are convergence controls, not search parameters.
-BLAS is restricted to one thread during fitting and study evaluation.
+Two independent studies use seeded sequential TPE (42), no pruning, and the same
+20-attempt budget. lbfgs learns L2-regularized coefficients with max_iter=5000
+and tol=0.0001. Both input conditions search C logarithmically in [0.0001, 10000].
 
-Class weights for balanced trials are computed from training labels only;
-validation and test scoring are unweighted and unresampled. Preprocessing is
-fixed, outside Optuna: latest_year uses training anchors; five_year uses the
-up to five training records per company. Shared preprocessing preserves offsets
-and presence and excludes padding. Models receive 18/100 columns respectively.
+The positive class weight w is sampled continuously on a log scale in
+[1, training negatives / training positives], using leakage.class_weight_bounds.
+The estimator receives class_weight={0: 1, 1: w}. Bounds use training labels only;
+validation scores are unweighted and unresampled. The domain contains unweighted
+w=1, but continuous sampling does not guarantee drawing that exact endpoint.
+This follows the same range as GRU/MLP pos_weight and XGBoost scale_pos_weight.
 
-The objective is validation Average Precision. Non-converged fits fail their
-trial and consume budget. An unexpected error aborts the run; an incomplete or
-wholly failed study cannot fall back to a default model. Trial states, failures,
-parameters/distributions, actual weights, iteration counts and elapsed durations
-are persisted in SQLite and JSON, including when selection fails.
+Validation Average Precision selects the converged trial. Non-converged trials
+are failed attempts; unexpected errors abort. No incomplete/all-failed study
+falls back to defaults. Validation F1 selects the threshold, breaking ties toward
+the highest threshold. No train+validation refit occurs. SQLite/JSON persist
+trial parameters, distributions, states, failures, weights, iterations and timing.
 
-For the selected converged trial, maximize validation F1 to choose its threshold;
-on a tie use the highest threshold (shared metric helper). Do not refit on
-train+validation. Freeze both selected models and thresholds before generating
-any held-out test predictions. Test scores never select trials or thresholds.
-No hyperparameter changes or repeat selection should be based on test results.
+## Held-out test gate
 
-## Artifacts
+This runner produces **no test inputs, test predictions, test metrics or test
+comparison manifest**. It saves LR selections only. Final test evaluation belongs
+to #56/#62 and must wait for all eight model/input studies and thresholds to be
+frozen. Finishing both LR studies does not open that gate. Shared dataset/split
+integrity checks still validate company/anchor/target metadata across partitions;
+held-out values are not used for tuning or scoring.
 
-Each condition directory contains the persistent Optuna study, trials JSON,
-study summary, selection JSON, individual converged trial estimators and the
-selected `pipeline.joblib`. The pipeline bundles condition, fitted preprocessing,
-model and threshold; its `predict(data, company_ids)` produces the aligned
-company_name/anchor_year/target/probability table without fitting anything.
-Only load trusted joblib files. Software versions are recorded; cross-version
-pickle compatibility is not promised.
+An earlier version evaluated the LR test partition prematurely. That historical
+exposure cannot be undone. The previous run is superseded, its test numbers are
+removed from the current documentation/PR description, and no further test
+selection/evaluation is performed here. Prior exposure remains a study limitation;
+removing current files does not erase Git history or previously viewed results.
 
-Validation and test predictions are saved separately. Metadata records selected
-parameters, class weights, model/input/study/trial IDs, feature order, solver
-settings, thresholds, software/device, seeds, source commit and dataset/split/
-config/checkpoint/preprocessor hashes. `run_context.json` and `run_config.json`
-exist before tuning so failed runs still have input/settings provenance.
+## Outputs and reload
 
-At the top level, `frozen_selections.json` marks completion of selection before
-test access. `comparison.json` verifies identical test IDs/anchors/targets and
-records AP, precision, recall, F1, other shared metrics and the paired AP change.
-`manifest.json` can be supplied to `scripts/compare_models.py`. The two LR
-artifacts are not a substitute for the complete eight-configuration comparison.
-The target remains publisher-dependent company status, with target_verified=false.
+Each condition contains study.sqlite3, trials.json, study_summary.json,
+selection.json, validation_predictions.csv, metadata.json and pipeline.joblib.
+The pipeline bundles condition, shared preprocessing, estimator and threshold.
+Its predict method is available for eventual centrally gated inference. Load
+joblib artifacts only from trusted sources; cross-version compatibility is not
+promised. Trial checkpoints are also saved.
 
-Tests cover converged reload equivalence, non-converged/all-failed trials,
-repeatable independent seeded searches, training-only class-weight calculation,
-full file-to-prediction execution, aligned output schemas and the test-access gate.
+run_context.json and run_config.json record input hashes, seeds and software even
+for failed studies. Selected metadata adds feature order, source commit and
+checkpoint/preprocessor hashes. frozen_selections.json and validation_summary.json
+record the two LR selections; they do not certify that all eight studies are ready.
+No old test-result summary is committed. Generated artifacts remain gitignored.
+The target retains the audited publisher-dependent limitations (target_verified=false).
 
-References: [scikit-learn LogisticRegression](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html),
+Tests cover continuous training-derived weight bounds, repeatable studies,
+convergence/failure handling, reload, shared-preprocessor verification and guards
+that reject test-company input construction or prediction in the LR runner.
+
+References: [LogisticRegression](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html),
 [Optuna study optimization](https://optuna.readthedocs.io/en/stable/reference/generated/optuna.study.Study.html).
-
-## Recorded execution: lr_issue53_run01
-
-Executed on 11 November 2026, source commit `bb2240d`, seed 42. Both studies
-completed all 20 attempted trials without convergence failures. Each selected
-trial used class_weight=None. Validation selected C=10.3531 (latest_year) and
-C=110.2182 (five_year); respective thresholds were 0.082974 and 0.114728.
-
-| Input | Validation AP | Test AP | Test precision | Test recall | Test F1 |
-|---|---:|---:|---:|---:|---:|
-| latest_year | 0.256833 | 0.291786 | 0.338710 | 0.456522 | 0.388889 |
-| five_year | 0.302716 | 0.320200 | 0.322581 | 0.543478 | 0.404858 |
-
-Both test files cover the same 1,346 companies, including 92 failures. Five-year
-inputs found 50 of those failures versus 42, while false positives increased
-from 82 to 105 at the separately validation-selected thresholds. This is one
-seeded run, not an uncertainty estimate or evidence of a causal history effect.
-Measured study durations were 1.86 and 2.44 seconds in this environment; these
-are study wall times, not total setup time or portable performance guarantees.
-
-The compact machine-readable record is [logistic-run-53.json](logistic-run-53.json).
-Full local artifacts are under `results/models/lr_issue53_run01/` (gitignored),
-including SQLite studies, pipelines, predictions and provenance. Reproduce them
-with the command above using a new output directory. Validation: 145 tests passed.

@@ -104,7 +104,7 @@ models:
     search:
       C_low: 0.0001
       C_high: 10000.0
-      class_weight: [null, balanced]
+      positive_class_weight: log_1_to_training_ratio
   xgboost:
     n_estimators: null
     max_depth: null

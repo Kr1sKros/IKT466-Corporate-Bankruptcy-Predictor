@@ -12,7 +12,8 @@ import numpy as np
 import optuna
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import LogisticRegression
-from sklearn.utils.class_weight import compute_class_weight
+from leakage import class_weight_bounds
+import pandas as pd
 from threadpoolctl import threadpool_limits
 
 from metrics import compute_metrics, select_validation_threshold
@@ -77,6 +78,12 @@ def tune_condition(x_train, y_train, x_validation, y_validation, *, directory,
         raise ValueError('Validation labels must contain both classes')
     if isinstance(trials, bool) or not isinstance(trials, int) or trials < 1:
         raise ValueError('A positive attempted-trial budget is required')
+    if set(np.unique(y_train)) != {0, 1}:
+        raise ValueError('Training labels must contain both classes')
+    bounds = class_weight_bounds(pd.DataFrame({'target': np.asarray(y_train), 'split': 'train'}))
+    max_weight = bounds['negative_to_positive_ratio']
+    if max_weight < 1:
+        raise ValueError('Training negative/positive ratio must be at least 1')
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=False)
     start = perf_counter()
@@ -85,13 +92,14 @@ def tune_condition(x_train, y_train, x_validation, y_validation, *, directory,
         storage='sqlite:///' + (directory / 'study.sqlite3').resolve().as_posix())
     study.set_user_attr('protocol', {'objective': 'validation_average_precision', 'attempted_trials': trials,
                                    'sampler_seed': sampler_seed, 'training_seed': seed,
-                                   'n_jobs': 1, 'pruning': 'none', 'search': search})
+                                   'n_jobs': 1, 'pruning': 'none', 'search': search, 'class_weight_bounds': bounds})
 
     def objective(trial):
         params = {'C': trial.suggest_float('C', search['C_low'], search['C_high'], log=True),
-                  'class_weight': trial.suggest_categorical('class_weight', search['class_weight'])}
-        model = build_model(seed=seed, hyperparameters={**params, 'max_iter': max_iter, 'tol': tol})
-        weights = compute_class_weight('balanced', classes=np.array([0, 1]), y=np.asarray(y_train)) if params['class_weight'] == 'balanced' else [1., 1.]
+                  'positive_class_weight': trial.suggest_float('positive_class_weight', 1.0, max_weight, log=True)}
+        weights = [1., params['positive_class_weight']]
+        model = build_model(seed=seed, hyperparameters={'C': params['C'], 'class_weight': {0: 1., 1: weights[1]},
+                                                      'max_iter': max_iter, 'tol': tol})
         trial.set_user_attr('effective_training_class_weights', {str(i): float(w) for i, w in enumerate(weights)})
         try:
             train_model(model, x_train, y_train)
@@ -133,6 +141,6 @@ def tune_condition(x_train, y_train, x_validation, y_validation, *, directory,
                  'validation_average_precision': best.value, 'threshold': threshold,
                  'threshold_source': 'validation', 'threshold_rule': 'max_f1_highest_threshold_on_tie',
                  'n_iter': model.n_iter_.tolist(), 'max_iter': max_iter, 'tol': tol,
-                 'solver': 'lbfgs', 'regularization': 'L2'}
+                 'solver': 'lbfgs', 'regularization': 'L2', 'class_weight_bounds': bounds}
     write_json(directory / 'selection.json', selection)
     return model, selection

@@ -1,4 +1,4 @@
-"""Run the two agreed Logistic Regression studies, then evaluate frozen models."""
+"""Run the two agreed Logistic Regression studies, validation only; final test evaluation is deferred."""
 import argparse
 from importlib.metadata import version
 from pathlib import Path
@@ -9,24 +9,22 @@ import numpy as np
 import yaml
 
 from data_loader import load_data
-from evaluation import compare_predictions
-from leakage import check_partitions, check_study_plan
-from metrics import compute_metrics
+from leakage import check_partitions, check_study_plan, check_preprocessor
 from models.logistic_regression import LogisticPipeline, tune_condition, write_json
-from preprocessing import fit_preprocessor, load_splits, split_paths, file_sha256, transform_histories
+from preprocessing import FittedPreprocessor, load_splits, split_paths, file_sha256, transform_histories
 from reproducibility import configure_reproducibility, file_provenance, write_run_metadata
 from sequences import create_histories, flatten_histories
 
 
-def run(csv, config_path, output):
+def run(csv, config_path, output, preprocessor_path=Path("results/models/preprocessor.json")):
     csv, config_path, output = Path(csv), Path(config_path), Path(output)
     config = yaml.safe_load(config_path.read_text(encoding='utf-8'))
     check_study_plan(config)
     lr = config['models']['logistic_regression']
     if lr.get('solver') != 'lbfgs' or lr.get('regularization') != 'L2':
         raise ValueError('The implemented LR protocol requires lbfgs with L2 regularization')
-    if lr['search']['class_weight'] != [None, 'balanced']:
-        raise ValueError('Search must include exactly None and balanced class weights')
+    if lr['search'].get('positive_class_weight') != 'log_1_to_training_ratio':
+        raise ValueError('Declare continuous training-derived positive class weights')
     if file_sha256(csv) != config['dataset']['sha256']:
         raise ValueError('Dataset checksum differs from audited data')
     if config['evaluation'].get('threshold_rule') != 'max_f1_highest_threshold_on_tie':
@@ -37,12 +35,19 @@ def run(csv, config_path, output):
     companies = load_splits(config['split']['directory'], expected_sha256=config['split']['sha256'])
     data = load_data(csv)
     check_partitions(companies, data)
-    preprocessor = fit_preprocessor(data, companies)
+    preprocessor_path = Path(preprocessor_path)
+    preprocessor = FittedPreprocessor.load(preprocessor_path)
+    expected_provenance = {'dataset_sha256': file_sha256(csv), 'split_sha256': config['split']['sha256']}
+    if preprocessor.record.get('provenance') != expected_provenance:
+        raise ValueError('Shared preprocessor provenance differs from dataset/splits')
+    # Audit refits a reference for verification only; the loaded artifact is used.
+    check_preprocessor(preprocessor, data, companies)
     seed_settings = configure_reproducibility(config['random_seed'])
     output.mkdir(parents=True)
     preprocessor.save(output / 'preprocessor.json')
     write_json(output / 'run_config.json', config)
     write_json(output / 'run_context.json', {
+        'shared_preprocessor': file_provenance(preprocessor_path),
         'dataset': file_provenance(csv), 'configuration': file_provenance(config_path),
         'splits': {k: file_provenance(v) for k, v in split_paths(config['split']['directory']).items()},
         'seed_settings': seed_settings, 'device': 'cpu', 'blas_threads': 1,
@@ -82,37 +87,19 @@ def run(csv, config_path, output):
             splits=split_paths(config['split']['directory']), configuration=config_path,
             checkpoint=checkpoint, dataset_version=str(config['dataset']['kaggle_version']))
         metadata['software']['packages'].update({p: version(p) for p in ('optuna', 'joblib', 'threadpoolctl')})
-        metadata['preprocessing'] = file_provenance(output / 'preprocessor.json')
+        metadata['preprocessing'] = file_provenance(preprocessor_path)
         metadata['target_verified'] = False
         metadata['hardware']['training_device'] = 'cpu'
         metadata['blas_threads'] = 1
         write_json(directory / 'metadata.json', metadata)
         selections[condition] = selection
-    # No test predictions or test metrics are computed before both selections exist.
+    # LR is selected, but the eight-study test gate belongs to #56/#62.
     write_json(output / 'frozen_selections.json', selections)
-    test = companies.loc[companies['split'].eq('test')]
-    predictions, thresholds, manifest = {}, {}, []
-    for condition, selection in selections.items():
-        directory = output / condition
-        pipeline = joblib.load(directory / 'pipeline.joblib')
-        predicted = pipeline.predict(data, test.company_name)
-        predicted.to_csv(directory / 'test_predictions.csv', index=False)
-        predictions[condition] = predicted
-        thresholds[condition] = selection['threshold']
-        write_json(directory / 'test_metrics.json', compute_metrics(predicted.target, predicted.probability, threshold=selection['threshold']))
-        manifest.append({'name': f'logistic_regression__{condition}', 'model': 'logistic_regression',
-                         'condition': condition, 'csv': f'{condition}/test_predictions.csv',
-                         'threshold': selection['threshold'], 'threshold_source': 'validation',
-                         'study_name': selection['study_name'], 'trial_number': selection['trial_number'],
-                         'selection': f'{condition}/selection.json'})
-    comparison = compare_predictions(predictions, expected=test, thresholds=thresholds)
-    ap5 = comparison['results']['five_year']['average_precision']
-    ap1 = comparison['results']['latest_year']['average_precision']
-    comparison['five_year_minus_latest_year_ap'] = None if ap5 is None or ap1 is None else ap5 - ap1
-    comparison['elapsed_seconds'] = perf_counter() - start
-    write_json(output / 'comparison.json', comparison)
-    write_json(output / 'manifest.json', {'runs': manifest})
-    return comparison
+    summary = {'status': 'validation_only', 'selections': selections,
+               'elapsed_seconds': perf_counter() - start,
+               'test_evaluation': 'deferred_until_all_eight_studies_are_frozen'}
+    write_json(output / 'validation_summary.json', summary)
+    return summary
 
 
 def main():
@@ -120,9 +107,10 @@ def main():
     parser.add_argument('--csv', required=True, type=Path)
     parser.add_argument('--config', default=Path('configs/config.yaml'), type=Path)
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--preprocessor', default=Path('results/models/preprocessor.json'), type=Path)
     args = parser.parse_args()
-    result = run(args.csv, args.config, args.output)
-    print({name: metrics['average_precision'] for name, metrics in result['results'].items()})
+    result = run(args.csv, args.config, args.output, args.preprocessor)
+    print({name: selection['validation_average_precision'] for name, selection in result['selections'].items()})
 
 
 if __name__ == '__main__':
