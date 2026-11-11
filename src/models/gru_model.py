@@ -10,6 +10,9 @@ The GRU reads packed sequences, so padding is never seen and the final hidden
 state is the state after the record at the anchor year t. Head: dropout ->
 Linear(hidden, 1) -> one logit; ``sigmoid(logit)`` is the bankruptcy probability.
 
+The model is bound to one condition: training and prediction refuse histories
+of another condition, step-column order or step count, also after reload.
+
 Optuna (#56) chooses the settings in ``suggest_params``; the network weights
 are learned by ``train_model`` inside each trial (Adam, early stopping on
 validation AP, best checkpoint restored).
@@ -30,7 +33,7 @@ from torch import nn
 from torch.utils.data import TensorDataset
 
 from reproducibility import make_data_loader
-from sequences import pack_histories
+from sequences import FIVE_YEAR_WINDOW, pack_histories, step_columns
 
 if TYPE_CHECKING:
     import optuna
@@ -42,14 +45,21 @@ PREDICT_BATCH_SIZE = 4096
 
 
 class GRUClassifier(nn.Module):
-    """Binary GRU over packed annual histories; returns one logit per company."""
+    """Binary GRU over packed annual histories; returns one logit per company.
 
-    def __init__(self, input_size: int, hidden_size: int, num_layers: int = 1,
+    ``condition`` fixes the exact step columns (``step_columns``) and step count.
+    """
+
+    def __init__(self, condition: str, hidden_size: int, num_layers: int = 1,
                  dropout: float = 0.0) -> None:
         super().__init__()
-        if input_size < 1 or hidden_size < 1 or num_layers < 1 or not 0 <= dropout < 1:
+        self.step_columns = step_columns(condition)
+        self.max_steps = 1 if condition == "latest_year" else FIVE_YEAR_WINDOW
+        input_size = len(self.step_columns)
+        if hidden_size < 1 or num_layers < 1 or not 0 <= dropout < 1:
             raise ValueError("Invalid GRU architecture settings")
-        self.config = {"input_size": input_size, "hidden_size": hidden_size,
+        self.condition = condition
+        self.config = {"condition": condition, "hidden_size": hidden_size,
                        "num_layers": num_layers, "dropout": dropout}
         # PyTorch applies GRU dropout only between stacked layers.
         self.gru = nn.GRU(input_size, hidden_size, num_layers, batch_first=True,
@@ -58,16 +68,28 @@ class GRUClassifier(nn.Module):
         self.head = nn.Linear(hidden_size, 1)
 
     def forward(self, features: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
-        """features: (batch, steps, input_size); lengths: (batch,) -> logits (batch,)."""
-        if features.dim() != 3 or features.shape[2] != self.config["input_size"]:
-            raise ValueError(f"Expected (batch, steps, {self.config['input_size']}), got {tuple(features.shape)}")
+        """features: (batch, steps, inputs) in ``step_columns`` order; lengths: (batch,) -> logits.
+
+        Use ``predict_proba``/``train_model`` with ``Histories`` so the condition
+        and column order are checked; a raw tensor carries no names.
+        """
+        width = len(self.step_columns)
+        if features.dim() != 3 or features.shape[2] != width:
+            raise ValueError(f"Expected (batch, steps, {width}), got {tuple(features.shape)}")
         if lengths.shape != (features.shape[0],):
             raise ValueError("lengths must have one entry per company")
         _, h_n = self.gru(pack_histories(features, lengths))
         return self.head(self.dropout(h_n[-1])).squeeze(-1)
 
 
-def _tensors(histories: "Histories") -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _tensors(model: GRUClassifier, histories: "Histories") -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Check condition, step columns and step count against the model, then convert."""
+    if histories.condition != model.condition:
+        raise ValueError(f"Model is for {model.condition}, histories are {histories.condition}")
+    if list(histories.step_columns) != model.step_columns:
+        raise ValueError("Histories step columns differ from the model's input order")
+    if histories.features.shape[1:] != (model.max_steps, len(model.step_columns)):
+        raise ValueError(f"Expected histories of shape (n, {model.max_steps}, {len(model.step_columns)})")
     features = torch.as_tensor(histories.features, dtype=torch.float32)
     lengths = torch.as_tensor(histories.lengths, dtype=torch.int64)
     targets = torch.as_tensor(histories.targets, dtype=torch.float32)
@@ -79,7 +101,7 @@ def _tensors(histories: "Histories") -> tuple[torch.Tensor, torch.Tensor, torch.
 @torch.no_grad()
 def predict_proba(model: GRUClassifier, histories: "Histories") -> np.ndarray:
     """Bankruptcy probabilities in the row order of ``histories`` (eval mode)."""
-    features, lengths, _ = _tensors(histories)
+    features, lengths, _ = _tensors(model, histories)
     was_training = model.training
     model.eval()
     try:
@@ -130,11 +152,10 @@ def train_model(
     restores the best weights into ``model``. Call
     ``reproducibility.configure_reproducibility(seed)`` before creating the model.
     """
-    if train.condition != validation.condition:
-        raise ValueError("Train and validation histories use different conditions")
     if pos_weight <= 0 or batch_size < 1 or max_epochs < 1 or patience < 1:
         raise ValueError("Invalid training settings")
-    features, lengths, targets = _tensors(train)
+    features, lengths, targets = _tensors(model, train)
+    _tensors(model, validation)  # same schema check before any training
     loader = make_data_loader(TensorDataset(features, lengths, targets), seed=seed,
                               batch_size=batch_size, shuffle=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -191,28 +212,29 @@ def suggest_params(trial: "optuna.Trial", space: dict[str, Any], *, max_pos_weig
     }
 
 
-def build_model(params: dict[str, Any], input_size: int) -> GRUClassifier:
-    return GRUClassifier(input_size, params["hidden_size"], params["num_layers"], params["dropout"])
+def build_model(params: dict[str, Any], condition: str) -> GRUClassifier:
+    return GRUClassifier(condition, params["hidden_size"], params["num_layers"], params["dropout"])
 
 
 # --- Checkpoints ------------------------------------------------------------------
 
-def save_checkpoint(model: GRUClassifier, path: str | Path, *, condition: str,
-                    step_columns: list[str], extra: dict[str, Any] | None = None) -> None:
-    """Save weights, architecture, condition and input order."""
+def save_checkpoint(model: GRUClassifier, path: str | Path, *,
+                    extra: dict[str, Any] | None = None) -> None:
+    """Save weights, architecture and the model's own condition/input order."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"version": CHECKPOINT_VERSION, "config": model.config, "condition": condition,
-                "step_columns": list(step_columns), "state_dict": model.state_dict(),
+    torch.save({"version": CHECKPOINT_VERSION, "config": model.config,
+                "step_columns": list(model.step_columns), "state_dict": model.state_dict(),
                 "extra": extra or {}}, path)
 
 
-def load_checkpoint(path: str | Path, *, condition: str, step_columns: list[str]) -> tuple[GRUClassifier, dict]:
+def load_checkpoint(path: str | Path, *, condition: str) -> tuple[GRUClassifier, dict]:
     """Load a checkpoint; refuse one saved for another condition or input order."""
     checkpoint = torch.load(Path(path), map_location="cpu", weights_only=True)
     if checkpoint["version"] != CHECKPOINT_VERSION:
         raise ValueError("Unsupported GRU checkpoint version")
-    if checkpoint["condition"] != condition or checkpoint["step_columns"] != list(step_columns):
+    if (checkpoint["config"]["condition"] != condition
+            or checkpoint["step_columns"] != step_columns(condition)):
         raise ValueError("Checkpoint was saved for another condition or input order")
     model = GRUClassifier(**checkpoint["config"])
     model.load_state_dict(checkpoint["state_dict"])

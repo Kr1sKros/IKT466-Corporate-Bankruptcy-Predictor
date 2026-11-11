@@ -20,7 +20,7 @@ from models.mlp_model import (
 )
 from reproducibility import configure_reproducibility
 from sequences import tabular_inputs
-from validation import FEATURE_COLUMNS
+from validation import FEATURE_COLUMNS, DataValidationError
 
 CONFIG = yaml.safe_load((Path(__file__).resolve().parents[1] / "configs" / "config.yaml").read_text())
 SPACE = CONFIG["models"]["mlp"]["search_space"]
@@ -58,7 +58,7 @@ def test_shapes_and_finite_probabilities(tables, condition, columns):
     x_train, *_ = tables[condition]
     assert x_train.shape[1] == columns
     torch.manual_seed(0)
-    model = MLPClassifier(columns, 8, num_layers=3, dropout=0.2)
+    model = MLPClassifier(condition, 8, num_layers=3, dropout=0.2)
     assert sum(isinstance(m, torch.nn.Linear) for m in model.modules()) == 4  # 3 hidden + head
     logits = model(torch.tensor(x_train.to_numpy(np.float32)))
     assert logits.shape == (len(x_train),) and torch.isfinite(logits).all()
@@ -75,7 +75,7 @@ def test_training_learns_restores_best_epoch_and_is_seeded(tables):
     runs = []
     for _ in range(2):
         configure_reproducibility(42)
-        model = MLPClassifier(100, 16)
+        model = MLPClassifier("five_year", 16)
         result = train_model(model, x_train, y_train, x_val, y_val, **settings)
         runs.append((result, predict_proba(model, x_val)))
     result, proba = runs[0]
@@ -90,8 +90,8 @@ def test_training_learns_restores_best_epoch_and_is_seeded(tables):
 def test_training_rejects_mismatched_columns_and_bad_settings(tables):
     x_train, y_train, _, _ = tables["five_year"]
     x_val, y_val = tables["latest_year"][2:]  # 18 columns instead of 100
-    model = MLPClassifier(100, 4)
-    with pytest.raises(ValueError, match="different feature columns"):
+    model = MLPClassifier("five_year", 4)
+    with pytest.raises(DataValidationError, match="do not match the schema"):
         train_model(model, x_train, y_train, x_val, y_val, learning_rate=1e-3,
                     weight_decay=0, pos_weight=1, batch_size=8)
     with pytest.raises(ValueError, match="Invalid"):
@@ -123,23 +123,42 @@ def test_search_space_matches_gru_is_seeded_and_within_ranges():
         assert p["batch_size"] in SPACE["batch_size"]
         assert 0 <= p["dropout"] <= 0.5 and 1e-4 <= p["learning_rate"] <= 1e-2
         assert 1e-6 <= p["weight_decay"] <= 1e-3 and 1 <= p["pos_weight"] <= 13.74
-    model = build_model(first[0], input_size=100)
+    model = build_model(first[0], "five_year")
     assert model.config["hidden_size"] == first[0]["hidden_size"]
     with pytest.raises(ValueError):
         suggest_params(optuna.trial.FixedTrial({}), SPACE, max_pos_weight=0.5)
 
 
-def test_checkpoint_roundtrip_and_schema_guard(tables, tmp_path):
-    x_train, _, x_val, _ = tables["five_year"]
-    columns = list(x_train.columns)
+def test_checkpoint_roundtrip_and_condition_guard(tables, tmp_path):
+    _, _, x_val, _ = tables["five_year"]
     torch.manual_seed(0)
-    model = MLPClassifier(100, 8, num_layers=2, dropout=0.3)
+    model = MLPClassifier("five_year", 8, num_layers=2, dropout=0.3)
     path = tmp_path / "mlp.pt"
-    save_checkpoint(model, path, condition="five_year", feature_columns=columns, extra={"threshold": 0.4})
-    loaded, extra = load_checkpoint(path, condition="five_year", feature_columns=columns)
+    save_checkpoint(model, path, extra={"threshold": 0.4})
+    loaded, extra = load_checkpoint(path, condition="five_year")
     assert extra == {"threshold": 0.4} and loaded.config == model.config
     np.testing.assert_array_equal(predict_proba(model, x_val), predict_proba(loaded, x_val))
     with pytest.raises(ValueError, match="another condition"):
-        load_checkpoint(path, condition="five_year", feature_columns=columns[::-1])
-    with pytest.raises(Exception):
-        save_checkpoint(model, path, condition="latest_year", feature_columns=columns)
+        load_checkpoint(path, condition="latest_year")
+
+
+@pytest.mark.parametrize("reload", [False, True])
+def test_reordered_or_replaced_columns_are_rejected(tables, tmp_path, reload):
+    """The reviewer's cases: reversed columns, an ID column replacing X1, raw arrays."""
+    x_train, y_train, x_val, y_val = tables["five_year"]
+    torch.manual_seed(0)
+    model = MLPClassifier("five_year", 8)
+    if reload:
+        save_checkpoint(model, tmp_path / "mlp.pt")
+        model, _ = load_checkpoint(tmp_path / "mlp.pt", condition="five_year")
+    reversed_columns = x_val[x_val.columns[::-1]]
+    with pytest.raises(DataValidationError, match="do not match the schema"):
+        predict_proba(model, reversed_columns)
+    replaced = x_train.rename(columns={"X1_r0": "company_name"})
+    with pytest.raises(DataValidationError, match="non-features"):
+        train_model(model, replaced, y_train, x_val, y_val, learning_rate=1e-3,
+                    weight_decay=0, pos_weight=1, batch_size=8)
+    with pytest.raises(TypeError, match="DataFrame"):
+        predict_proba(model, x_val.to_numpy())
+    with pytest.raises(DataValidationError):
+        predict_proba(model, tables["latest_year"][2])

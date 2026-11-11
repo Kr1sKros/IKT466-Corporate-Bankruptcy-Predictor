@@ -3,8 +3,10 @@
 Inputs are the scaled tabular features from ``sequences.flatten_histories`` +
 ``preprocessing.transform_histories(..., model='mlp')``: latest_year has 18
 columns (X1-X18 at t); five_year has 100 (5 recency slots x X1-X18,
-years_before_anchor and present). Column order is checked against
-``sequences.tabular_columns``.
+years_before_anchor and present). The model is bound to one condition: it
+only accepts a DataFrame whose columns are exactly ``sequences.tabular_columns``
+for that condition, checked by name and order before any conversion, during
+training, prediction and after checkpoint reload.
 
 Architecture: ``num_layers`` hidden layers of equal ``hidden_size``, each
 Linear -> ReLU -> Dropout, then Linear(hidden, 1) -> one logit;
@@ -32,7 +34,7 @@ from torch import nn
 from torch.utils.data import TensorDataset
 
 from reproducibility import make_data_loader
-from sequences import validate_tabular_columns
+from sequences import tabular_columns, validate_tabular_columns
 
 if TYPE_CHECKING:
     import optuna
@@ -42,14 +44,20 @@ PREDICT_BATCH_SIZE = 4096
 
 
 class MLPClassifier(nn.Module):
-    """Binary MLP over one row of tabular features per company; returns logits."""
+    """Binary MLP over one row of tabular features per company; returns logits.
 
-    def __init__(self, input_size: int, hidden_size: int, num_layers: int = 1,
+    ``condition`` fixes the exact input columns (``feature_columns``).
+    """
+
+    def __init__(self, condition: str, hidden_size: int, num_layers: int = 1,
                  dropout: float = 0.0) -> None:
         super().__init__()
-        if input_size < 1 or hidden_size < 1 or num_layers < 1 or not 0 <= dropout < 1:
+        self.feature_columns = tabular_columns(condition)
+        input_size = len(self.feature_columns)
+        if hidden_size < 1 or num_layers < 1 or not 0 <= dropout < 1:
             raise ValueError("Invalid MLP architecture settings")
-        self.config = {"input_size": input_size, "hidden_size": hidden_size,
+        self.condition = condition
+        self.config = {"condition": condition, "hidden_size": hidden_size,
                        "num_layers": num_layers, "dropout": dropout}
         layers: list[nn.Module] = []
         width = input_size
@@ -60,16 +68,25 @@ class MLPClassifier(nn.Module):
         self.head = nn.Linear(hidden_size, 1)
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
-        """features: (batch, input_size) -> logits (batch,)."""
-        if features.dim() != 2 or features.shape[1] != self.config["input_size"]:
-            raise ValueError(f"Expected (batch, {self.config['input_size']}), got {tuple(features.shape)}")
+        """features: (batch, input_size) already in ``feature_columns`` order -> logits (batch,).
+
+        Use ``predict_proba``/``train_model`` with a DataFrame so column names
+        and order are checked; a raw tensor carries no names.
+        """
+        width = len(self.feature_columns)
+        if features.dim() != 2 or features.shape[1] != width:
+            raise ValueError(f"Expected (batch, {width}), got {tuple(features.shape)}")
         return self.head(self.hidden(features)).squeeze(-1)
 
 
-def _features(features: pd.DataFrame | np.ndarray) -> torch.Tensor:
-    tensor = torch.as_tensor(np.asarray(features, dtype=np.float32))
-    if tensor.dim() != 2 or not torch.isfinite(tensor).all():
-        raise ValueError("Features must be a finite 2-D table")
+def _features(model: MLPClassifier, features: pd.DataFrame) -> torch.Tensor:
+    """Check names and order against the model's schema, then convert."""
+    if not isinstance(features, pd.DataFrame):
+        raise TypeError("Features must be a DataFrame with named columns")
+    validate_tabular_columns(features.columns, model.condition)
+    tensor = torch.as_tensor(features.to_numpy(dtype=np.float32))
+    if not torch.isfinite(tensor).all():
+        raise ValueError("Features must be finite")
     return tensor
 
 
@@ -81,9 +98,9 @@ def _targets(targets, n_rows: int) -> torch.Tensor:
 
 
 @torch.no_grad()
-def predict_proba(model: MLPClassifier, features: pd.DataFrame | np.ndarray) -> np.ndarray:
+def predict_proba(model: MLPClassifier, features: pd.DataFrame) -> np.ndarray:
     """Bankruptcy probabilities in row order (eval mode)."""
-    x = _features(features)
+    x = _features(model, features)
     was_training = model.training
     model.eval()
     try:
@@ -116,9 +133,9 @@ class TrainingResult:
 
 def train_model(
     model: MLPClassifier,
-    x_train: pd.DataFrame | np.ndarray,
+    x_train: pd.DataFrame,
     y_train,
-    x_validation: pd.DataFrame | np.ndarray,
+    x_validation: pd.DataFrame,
     y_validation,
     *,
     learning_rate: float,
@@ -136,12 +153,10 @@ def train_model(
     restores the best weights into ``model``. Call
     ``reproducibility.configure_reproducibility(seed)`` before creating the model.
     """
-    if isinstance(x_train, pd.DataFrame) and isinstance(x_validation, pd.DataFrame) \
-            and list(x_train.columns) != list(x_validation.columns):
-        raise ValueError("Train and validation use different feature columns")
     if pos_weight <= 0 or batch_size < 1 or max_epochs < 1 or patience < 1:
         raise ValueError("Invalid training settings")
-    features = _features(x_train)
+    features = _features(model, x_train)
+    _features(model, x_validation)  # same schema check before any training
     targets = _targets(y_train, len(features))
     loader = make_data_loader(TensorDataset(features, targets), seed=seed,
                               batch_size=batch_size, shuffle=True)
@@ -199,29 +214,29 @@ def suggest_params(trial: "optuna.Trial", space: dict[str, Any], *, max_pos_weig
     }
 
 
-def build_model(params: dict[str, Any], input_size: int) -> MLPClassifier:
-    return MLPClassifier(input_size, params["hidden_size"], params["num_layers"], params["dropout"])
+def build_model(params: dict[str, Any], condition: str) -> MLPClassifier:
+    return MLPClassifier(condition, params["hidden_size"], params["num_layers"], params["dropout"])
 
 
 # --- Checkpoints ------------------------------------------------------------------
 
-def save_checkpoint(model: MLPClassifier, path: str | Path, *, condition: str,
-                    feature_columns: list[str], extra: dict[str, Any] | None = None) -> None:
-    """Save weights, architecture, condition and exact column order."""
-    validate_tabular_columns(feature_columns, condition)
+def save_checkpoint(model: MLPClassifier, path: str | Path, *,
+                    extra: dict[str, Any] | None = None) -> None:
+    """Save weights, architecture and the model's own condition/column order."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"version": CHECKPOINT_VERSION, "config": model.config, "condition": condition,
-                "feature_columns": list(feature_columns), "state_dict": model.state_dict(),
+    torch.save({"version": CHECKPOINT_VERSION, "config": model.config,
+                "feature_columns": list(model.feature_columns), "state_dict": model.state_dict(),
                 "extra": extra or {}}, path)
 
 
-def load_checkpoint(path: str | Path, *, condition: str, feature_columns: list[str]) -> tuple[MLPClassifier, dict]:
+def load_checkpoint(path: str | Path, *, condition: str) -> tuple[MLPClassifier, dict]:
     """Load a checkpoint; refuse one saved for another condition or column order."""
     checkpoint = torch.load(Path(path), map_location="cpu", weights_only=True)
     if checkpoint["version"] != CHECKPOINT_VERSION:
         raise ValueError("Unsupported MLP checkpoint version")
-    if checkpoint["condition"] != condition or checkpoint["feature_columns"] != list(feature_columns):
+    if (checkpoint["config"]["condition"] != condition
+            or checkpoint["feature_columns"] != tabular_columns(condition)):
         raise ValueError("Checkpoint was saved for another condition or column order")
     model = MLPClassifier(**checkpoint["config"])
     model.load_state_dict(checkpoint["state_dict"])
