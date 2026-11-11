@@ -1,6 +1,8 @@
 """GRU shapes, packed padding invariance, training, search space and checkpoints (#55)."""
 from pathlib import Path
 
+from dataclasses import replace
+
 import numpy as np
 import optuna
 import pandas as pd
@@ -54,7 +56,7 @@ def test_shapes_and_finite_probabilities(histories, condition, steps, inputs):
     train, _ = histories[condition]
     assert train.features.shape[1:] == (steps, inputs)
     torch.manual_seed(0)
-    model = GRUClassifier(inputs, 8, num_layers=2, dropout=0.2)
+    model = GRUClassifier(condition, 8, num_layers=2, dropout=0.2)
     logits = model(torch.from_numpy(train.features), torch.from_numpy(train.lengths))
     assert logits.shape == (len(train.lengths),) and torch.isfinite(logits).all()
     proba = predict_proba(model, train)
@@ -66,7 +68,7 @@ def test_shapes_and_finite_probabilities(histories, condition, steps, inputs):
 def test_padding_never_changes_the_output(histories):
     train, _ = histories["five_year"]
     torch.manual_seed(0)
-    model = GRUClassifier(19, 8, num_layers=2).eval()
+    model = GRUClassifier("five_year", 8, num_layers=2).eval()
     features, lengths = torch.from_numpy(train.features), torch.from_numpy(train.lengths)
     noisy = features.clone()
     noisy[torch.from_numpy(~valid_step_mask(train))] = 1e3
@@ -86,7 +88,7 @@ def test_training_learns_restores_best_epoch_and_is_seeded(histories):
     runs = []
     for _ in range(2):
         configure_reproducibility(42)
-        model = GRUClassifier(19, 8)
+        model = GRUClassifier("five_year", 8)
         result = train_model(model, train, validation, **settings)
         runs.append((result, predict_proba(model, validation)))
     result, proba = runs[0]
@@ -100,8 +102,8 @@ def test_training_learns_restores_best_epoch_and_is_seeded(histories):
 
 
 def test_training_rejects_mixed_conditions_and_bad_settings(histories):
-    model = GRUClassifier(19, 4)
-    with pytest.raises(ValueError, match="conditions"):
+    model = GRUClassifier("five_year", 4)
+    with pytest.raises(ValueError, match="Model is for five_year"):
         train_model(model, histories["five_year"][0], histories["latest_year"][1],
                     learning_rate=1e-3, weight_decay=0, pos_weight=1, batch_size=8)
     with pytest.raises(ValueError, match="Invalid"):
@@ -128,7 +130,7 @@ def test_search_space_is_seeded_and_within_declared_ranges():
         assert p["batch_size"] in SPACE["batch_size"]
         assert 0 <= p["dropout"] <= 0.5 and 1e-4 <= p["learning_rate"] <= 1e-2
         assert 1e-6 <= p["weight_decay"] <= 1e-3 and 1 <= p["pos_weight"] <= 13.74
-    model = build_model(first[0], input_size=19)
+    model = build_model(first[0], "five_year")
     assert model.config["hidden_size"] == first[0]["hidden_size"]
     with pytest.raises(ValueError):
         suggest_params(optuna.trial.FixedTrial({}), SPACE, max_pos_weight=0.5)
@@ -137,12 +139,35 @@ def test_search_space_is_seeded_and_within_declared_ranges():
 def test_checkpoint_roundtrip_and_condition_guard(histories, tmp_path):
     train, validation = histories["five_year"]
     torch.manual_seed(0)
-    model = GRUClassifier(19, 8, num_layers=2, dropout=0.3)
+    model = GRUClassifier("five_year", 8, num_layers=2, dropout=0.3)
     path = tmp_path / "gru.pt"
-    save_checkpoint(model, path, condition="five_year", step_columns=train.step_columns,
-                    extra={"threshold": 0.4})
-    loaded, extra = load_checkpoint(path, condition="five_year", step_columns=train.step_columns)
+    save_checkpoint(model, path, extra={"threshold": 0.4})
+    loaded, extra = load_checkpoint(path, condition="five_year")
     assert extra == {"threshold": 0.4} and loaded.config == model.config
     np.testing.assert_array_equal(predict_proba(model, validation), predict_proba(loaded, validation))
     with pytest.raises(ValueError, match="another condition"):
-        load_checkpoint(path, condition="latest_year", step_columns=train.step_columns)
+        load_checkpoint(path, condition="latest_year")
+
+
+@pytest.mark.parametrize("reload", [False, True])
+def test_reordered_or_foreign_histories_are_rejected(histories, tmp_path, reload):
+    """Same width but wrong condition, column order or step count must fail."""
+    train, validation = histories["five_year"]
+    torch.manual_seed(0)
+    model = GRUClassifier("five_year", 8)
+    if reload:
+        save_checkpoint(model, tmp_path / "gru.pt")
+        model, _ = load_checkpoint(tmp_path / "gru.pt", condition="five_year")
+    order = list(range(19))[::-1]
+    reordered = replace(validation, features=validation.features[:, :, order],
+                        step_columns=[validation.step_columns[i] for i in order])
+    with pytest.raises(ValueError, match="step columns"):
+        predict_proba(model, reordered)
+    with pytest.raises(ValueError, match="step columns"):
+        train_model(model, reordered, validation, learning_rate=1e-3, weight_decay=0,
+                    pos_weight=1, batch_size=8)
+    with pytest.raises(ValueError, match="Model is for"):
+        predict_proba(model, histories["latest_year"][1])
+    truncated = replace(validation, features=validation.features[:, :3])
+    with pytest.raises(ValueError, match="shape"):
+        predict_proba(model, truncated)
