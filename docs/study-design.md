@@ -16,7 +16,7 @@ model families?**
 | Logistic regression | Latest annual features | Flattened five-year history |
 | XGBoost | Latest annual features | Flattened five-year history |
 | MLP | Latest annual features | Flattened five-year history |
-| GRU | One real timestep | Variable-length full sequence |
+| GRU | One real timestep | Up to five real observations, oldest to newest |
 
 Train eight separate configurations, not one model reused without retraining.
 Investigation 1 compares model families within each condition. Investigation 2

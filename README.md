@@ -199,9 +199,10 @@ latest-year and five-year inputs (GRU sequences and flattened tables), shared
 metrics/reproducibility helpers and aligned saved-prediction comparison are
 implemented, as are the fixed per-condition scaling (`docs/preprocessing.md`)
 and the leakage audit (`scripts/audit_leakage.py`, `docs/leakage-audit.md`).
-The [XGBoost runner](docs/xgboost-experiments.md) implements separate latest-year
-and five-year Optuna studies with saved models and aligned predictions.
-Other model runners and plotting remain incomplete; the complete eight-study
+The [Logistic Regression](docs/logistic-experiments.md) and
+[XGBoost](docs/xgboost-experiments.md) runners implement separate latest-year
+and five-year validation-only Optuna studies using the shared prepared artifact.
+MLP/GRU runners and plotting remain incomplete; the complete eight-study
 workflow and cross-model reporting are still pending.
 No trained models or experimental results are included. Settings marked `null`
 are unresolved choices, not runnable defaults.
@@ -211,7 +212,7 @@ are unresolved choices, not runnable defaults.
 1. Audit company IDs, years, and provided labels in `data_loader.py`,
    `preprocessing.py`, and `inspect_data.py`.
 2. Implement reproducible company-disjoint splits and training-only preprocessing.
-3. Extend history construction to all records and implement matched flattened and
+3. Select the latest five recorded years and implement matched flattened and
    sequential inputs, padding indicators, time offsets and tests.
 4. Integrate every model with the common Optuna protocol, train-only preparation
    and model/condition-specific saved artifacts.

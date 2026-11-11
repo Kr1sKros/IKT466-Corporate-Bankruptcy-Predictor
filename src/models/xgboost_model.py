@@ -13,6 +13,7 @@ from xgboost import XGBClassifier
 from xgboost.core import XGBoostError
 
 from metrics import compute_metrics, select_validation_threshold
+from leakage import class_weight_bounds
 from preprocessing import FittedPreprocessor, transform_histories
 from reproducibility import estimator_seed_parameters
 from sequences import CONDITIONS, create_histories, flatten_histories, tabular_columns
@@ -80,7 +81,8 @@ class XGBoostPipeline:
         validate_features(features)
         result = metadata[['company_name', 'anchor_year', 'target']].copy()
         result['probability'] = self.model.predict_proba(features)[:, 1]
-        compute_metrics(result.target, result.probability, threshold=self.threshold)
+        if not np.isfinite(result.probability).all() or not result.probability.between(0, 1).all():
+            raise ValueError('Invalid prediction probabilities')
         return result
 
     def save(self, directory):
@@ -142,11 +144,10 @@ def tune_condition(x_train, y_train, x_validation, y_validation, *, directory,
     validate_search(search)
     if isinstance(trials, bool) or not isinstance(trials, int) or trials < 1:
         raise ValueError('A positive attempted-trial budget is required')
-    positives = int(y_train.sum())
-    negatives = len(y_train) - positives
-    ratio = negatives / positives
-    balance = {'source': 'train', 'positives': positives, 'negatives': negatives,
-               'negative_to_positive_ratio': ratio}
+    balance = class_weight_bounds(pd.DataFrame({'target': y_train, 'split': 'train'}))
+    ratio = balance['negative_to_positive_ratio']
+    if ratio < 1:
+        raise ValueError('Training negative/positive ratio must be at least 1')
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=False)
     started = perf_counter()
@@ -157,9 +158,7 @@ def tune_condition(x_train, y_train, x_validation, y_validation, *, directory,
         'model': 'xgboost', 'objective': 'validation_average_precision',
         'attempted_trials': trials, 'n_jobs': 1, 'pruning': 'none',
         'sampler_seed': sampler_seed, 'training_seed': seed, 'search': search,
-        'class_balance': balance, 'scale_pos_weight_bounds': [min(1., ratio), max(1., ratio)]})
-    # Ensure an unweighted reference even with a smoke-test budget.
-    study.enqueue_trial({'weighting': 'unweighted'})
+        'class_balance': balance, 'scale_pos_weight_bounds': [1., ratio]})
 
     def objective(trial):
         try:
@@ -167,11 +166,7 @@ def tune_condition(x_train, y_train, x_validation, y_validation, *, directory,
             for name, spec in search.items():
                 suggest = trial.suggest_int if name in {'n_estimators', 'max_depth'} else trial.suggest_float
                 params[name] = suggest(name, spec['low'], spec['high'], log=spec.get('log', False))
-            mode = trial.suggest_categorical('weighting', ['unweighted', 'train_ratio', 'tuned'])
-            weight = 1. if mode == 'unweighted' else ratio
-            if mode == 'tuned':
-                weight = trial.suggest_float('scale_pos_weight', min(1., ratio), max(1., ratio), log=True)
-            params['scale_pos_weight'] = weight
+            params['scale_pos_weight'] = trial.suggest_float('scale_pos_weight', 1., ratio, log=True)
             trial.set_user_attr('effective_parameters', params)
             model = train_model(build_model(seed=seed, hyperparameters=params), x_train, y_train)
             score = compute_metrics(y_validation, model.predict_proba(x_validation)[:, 1])['average_precision']

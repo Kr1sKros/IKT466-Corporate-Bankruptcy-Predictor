@@ -1,5 +1,4 @@
 """Real tiny XGBoost fits, failure handling, and test-isolated paired studies."""
-import copy
 import importlib.util
 import json
 from pathlib import Path
@@ -108,8 +107,9 @@ def test_seeded_search_and_training_weight_bounds(panel, search, tmp_path):
     assert [r['parameters'] for r in records[0]] == [r['parameters'] for r in records[1]]
     assert selections[0]['class_balance']['negative_to_positive_ratio'] == 3.
     weights = [r['attributes']['effective_parameters']['scale_pos_weight'] for r in records[0]]
-    assert weights[0] == 1.
     assert all(1 <= w <= 3 for w in weights)
+    distribution = json.loads(records[0][0]['distributions']['scale_pos_weight'])['attributes']
+    assert distribution['low'] == 1 and distribution['high'] == 3 and distribution['log']
     assert len(records[0]) == 11
 
 
@@ -143,40 +143,48 @@ def prepare_run(panel, tmp_path, search):
     config['models']['xgboost']['search'] = search
     path = tmp_path / 'config.yaml'
     path.write_text(yaml.safe_dump(config))
-    return csv, path
+    preprocessor = fit_preprocessor(data, companies)
+    preprocessor.record['provenance'] = {
+        'dataset_sha256': file_sha256(csv), 'split_sha256': config['split']['sha256']}
+    preprocessor_path = tmp_path / 'shared_preprocessor.json'
+    preprocessor.save(preprocessor_path)
+    return csv, path, preprocessor_path
 
 
-def test_paired_runner_freezes_before_test_and_writes_aligned_artifacts(panel, search, tmp_path, monkeypatch):
-    csv, config = prepare_run(panel, tmp_path, search)
+def test_paired_runner_uses_shared_artifact_and_never_scores_test(panel, search, tmp_path, monkeypatch):
+    csv, config, preprocessor = prepare_run(panel, tmp_path, search)
     output = tmp_path / 'run'
     original = xgb.XGBoostPipeline.predict
     test_ids = set(panel[1].loc[panel[1].split.eq('test'), 'company_name'])
     def guarded_predict(self, data, ids):
         if set(ids) & test_ids:
-            frozen = json.loads((output / 'frozen_selections.json').read_text())
-            assert set(frozen) == {'latest_year', 'five_year'}
+            pytest.fail('Training runner must not predict on test companies')
         return original(self, data, ids)
     monkeypatch.setattr(xgb.XGBoostPipeline, 'predict', guarded_predict)
-    report = runner.run(csv, config, output)
-    assert report['test_count'] == 12
-    assert set(report['results']) == {'latest_year', 'five_year'}
-    manifest = json.loads((output / 'manifest.json').read_text())
-    assert len(manifest['runs']) == 2
+    report = runner.run(csv, config, output, preprocessor)
+    assert report['status'] == 'validation_only'
+    assert report['test_evaluation'] == 'deferred_until_all_eight_studies_are_frozen'
+    assert set(report['selections']) == {'latest_year', 'five_year'}
+    assert set(json.loads((output / 'frozen_selections.json').read_text())) == {'latest_year', 'five_year'}
+    shared = json.loads(preprocessor.read_text())
+    validation_ids = set(panel[1].loc[panel[1].split.eq('validation'), 'company_name'])
     for condition in ['latest_year', 'five_year']:
-        frame = pd.read_csv(output / condition / 'test_predictions.csv')
-        assert set(frame.company_name) == test_ids
-        assert frame.condition.eq(condition).all()
+        frame = pd.read_csv(output / condition / 'validation_predictions.csv')
+        assert set(frame.company_name) == validation_ids
+        assert not (output / condition / 'test_predictions.csv').exists()
+        assert not (output / condition / 'test_metrics.json').exists()
+        assert json.loads((output / condition / 'preprocessor.json').read_text()) == shared
         metadata = json.loads((output / condition / 'metadata.json').read_text())
         assert metadata['target_verified'] is False
         assert metadata['parameters']['threshold_source'] == 'validation'
         assert metadata['software']['packages']['optuna']
     with pytest.raises(FileExistsError):
-        runner.run(csv, config, output)
+        runner.run(csv, config, output, preprocessor)
 
 
 def test_test_data_cannot_change_selections(panel, search, tmp_path):
-    csv, config_path = prepare_run(panel, tmp_path, search)
-    runner.run(csv, config_path, tmp_path / 'original')
+    csv, config_path, preprocessor_path = prepare_run(panel, tmp_path, search)
+    runner.run(csv, config_path, tmp_path / 'original', preprocessor_path)
     data = pd.read_csv(csv)
     test_ids = set(panel[1].loc[panel[1].split.eq('test'), 'company_name'])
     data.loc[data.company_name.isin(test_ids), FEATURE_COLUMNS] = 1e6
@@ -184,9 +192,49 @@ def test_test_data_cannot_change_selections(panel, search, tmp_path):
     config = yaml.safe_load(config_path.read_text())
     config['dataset']['sha256'] = file_sha256(csv)
     config_path.write_text(yaml.safe_dump(config))
-    runner.run(csv, config_path, tmp_path / 'altered')
+    preprocessor = json.loads(preprocessor_path.read_text())
+    preprocessor['provenance']['dataset_sha256'] = config['dataset']['sha256']
+    preprocessor_path.write_text(json.dumps(preprocessor))
+    runner.run(csv, config_path, tmp_path / 'altered', preprocessor_path)
     for condition in ['latest_year', 'five_year']:
         original = json.loads((tmp_path / 'original' / condition / 'selection.json').read_text())
         altered = json.loads((tmp_path / 'altered' / condition / 'selection.json').read_text())
         for key in ['parameters', 'threshold', 'validation_average_precision', 'class_balance']:
             assert original[key] == altered[key]
+
+
+def test_stale_shared_preprocessor_fails_before_training(panel, search, tmp_path):
+    csv, config_path, preprocessor_path = prepare_run(panel, tmp_path, search)
+    record = json.loads(preprocessor_path.read_text())
+    record['provenance']['dataset_sha256'] = 'wrong'
+    preprocessor_path.write_text(json.dumps(record))
+    destination = tmp_path / 'must_not_exist'
+    with pytest.raises(ValueError, match='provenance'):
+        runner.run(csv, config_path, destination, preprocessor_path)
+    assert not destination.exists()
+
+
+def test_lr_and_xgboost_share_tuning_protocol(panel, search, tmp_path):
+    import optuna
+    from models.logistic_regression import tune_condition as tune_lr
+    train, tm = features(panel)
+    val, vm = features(panel, partition='validation')
+    config = yaml.safe_load((ROOT / 'configs/config.yaml').read_text())
+    tuning = config['study_plan']['tuning']
+    common = {'seed': config['random_seed'], 'sampler_seed': tuning['sampler_seed'], 'trials': 2}
+    calls = [(xgb.tune_condition, search, 'xgb'),
+             (tune_lr, {'C_low': .1, 'C_high': 1.}, 'lr')]
+    protocols, bounds = [], []
+    for tune, space, name in calls:
+        _, selected = tune(train, tm.target, val, vm.target, directory=tmp_path / name,
+                           study_name=name, search=space, **common)
+        study = optuna.load_study(study_name=name, storage='sqlite:///' + str(tmp_path / name / 'study.sqlite3'))
+        protocols.append(study.user_attrs['protocol'])
+        weight = 'scale_pos_weight' if name == 'xgb' else 'positive_class_weight'
+        distribution = study.trials[0].distributions[weight]
+        bounds.append((distribution.low, distribution.high, distribution.log))
+        assert selected['threshold_rule'] == config['evaluation']['threshold_rule']
+        assert selected['threshold_source'] == 'validation'
+    for key in ['objective', 'attempted_trials', 'n_jobs', 'pruning', 'sampler_seed', 'training_seed']:
+        assert protocols[0][key] == protocols[1][key]
+    assert bounds == [(1., 3., True), (1., 3., True)]

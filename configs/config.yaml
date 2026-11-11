@@ -1,4 +1,4 @@
-# XGBoost has a runnable search; null settings for other models remain planning choices.
+# LR and XGBoost have runnable searches; null settings remain planning choices.
 random_seed: 42
 
 dataset:
@@ -106,6 +106,7 @@ models:
       C_high: 10000.0
       positive_class_weight: log_1_to_training_ratio
   xgboost:
+    positive_class_weight: log_1_to_training_ratio
     # Identical space in both conditions; class-weight bounds use training labels.
     search:
       n_estimators: {low: 100, high: 400}
