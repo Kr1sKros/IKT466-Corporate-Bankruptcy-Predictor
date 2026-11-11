@@ -27,7 +27,7 @@ Plan: data preparation by **15 Nov**, model training by **16 Nov**, experiments 
 Project for the Introduction to Machine Learning course (IKT466) at UiA.
 
 We compare logistic regression, XGBoost, MLP and GRU using either the **latest
-recorded year** or **all available financial history** for each company. All eight
+recorded year** or the **five most recent recorded years** for each company. All eight
 model/input combinations use the same company split and separate Optuna studies.
 
 The agreed protocol is in [docs/study-design.md](docs/study-design.md). A revised,
@@ -45,20 +45,21 @@ drop-in report introduction is in [report/introduction.tex](report/introduction.
 
 **Research question:**
 
-> Does using all available financial history improve corporate bankruptcy prediction compared with using only the latest year, and how does this effect differ across model families?
+> Does using five years of financial observations improve corporate bankruptcy prediction compared with using only the latest year, and how does this effect differ across model families?
 
 ## 2. Models and input conditions
 
-| Model | Latest-year condition | Full-history condition |
+| Model | Latest-year condition | Five-year condition |
 |---|---|---|
-| Logistic regression | Latest annual features | Flattened full history |
-| XGBoost | Latest annual features | Flattened full history |
-| MLP | Latest annual features | Flattened full history |
-| GRU | One annual observation | All recorded observations as a sequence |
+| Logistic regression | Latest annual features | Flattened five-year history |
+| XGBoost | Latest annual features | Flattened five-year history |
+| MLP | Latest annual features | Flattened five-year history |
+| GRU | One annual observation | Up to five recorded observations as a sequence |
 
-Each cell is trained and tuned separately: **eight configurations**. Full history
-includes companies with only one or two records as well as longer histories. It
-is not capped at five years. SVM is outside the agreed scope.
+Each cell is trained and tuned separately: **eight configurations**. The
+five-year condition uses the five most recent recorded years up to *t* (all of
+them when a company has fewer) and excludes older records. Short histories are
+kept. SVM is outside the agreed scope (five-year decision: #16, 10 Nov 2026).
 
 ## 3. History representation
 
@@ -68,19 +69,18 @@ The other models receive the same financial history flattened into fixed-width,
 recency-aligned slots, with presence indicators and relative time offsets. Missing
 calendar years must remain distinguishable from consecutive observations.
 
-The full-history schema supports the audited 1999–2018 span (up to 20 annual
-records), retains short histories and rejects truncation. Fit preprocessing only
-on valid training records. Implemented in `src/sequences.py` (section 12).
+The five-year window holds at most five records; with gaps they can span more
+than five calendar years. Fit preprocessing only on valid training records. Implemented in `src/sequences.py` (section 12).
 
 ## 4. Investigations
 
 1. **Model comparison:** compare all four families within each input condition.
-2. **Value of history:** compare latest-year versus full-history performance
+2. **Value of history:** compare latest-year versus five-year performance
    within each family, including results grouped by available history.
 
-This replaces the GRU-only 1–5-year sweep. It tests the value of available history,
-not the optimal number of years. Full-history gains may also reflect history
-length/missingness signals and separately selected model capacity.
+This replaces the GRU-only 1–5-year sweep. It tests the value of up to five
+years of history, not the optimal number of years. Five-year gains may also
+reflect history length/missingness signals and separately selected model capacity.
 
 ### Optuna tuning
 
@@ -134,7 +134,7 @@ The project uses a simple `src/` layout without an additional project-package fo
 │   ├── data_loader.py            # Existing Kaggle download and CSV loading
 │   ├── validation.py             # Dataset validators and real-data audit
 │   ├── preprocessing.py          # Company splits, imputation/scaling
-│   ├── sequences.py              # Latest-year/full-history GRU and tabular inputs
+│   ├── sequences.py              # Latest-year/five-year GRU and tabular inputs
 │   ├── metrics.py
 │   ├── evaluation.py
 │   ├── visualization.py
@@ -195,7 +195,7 @@ The local CSV path in the config is separate from that cache. Run scripts from
 the repository root; future config loading should resolve paths with `pathlib`.
 
 Downloading/loading, dataset validation, jointly stratified company splits,
-latest-year and full-history inputs (GRU sequences and flattened tables), shared
+latest-year and five-year inputs (GRU sequences and flattened tables), shared
 metrics/reproducibility helpers and aligned saved-prediction comparison are
 implemented. Scaling, training runners, models and plotting remain incomplete.
 **All eight Optuna studies and paired-condition reporting are not yet
@@ -396,15 +396,15 @@ same companies, anchors and targets.
 | | GRU (`create_histories`) | LR / XGBoost / MLP (`tabular_inputs`) |
 |---|---|---|
 | `latest_year` | 1 step: X1–X18 at *t* | 18 columns: X1–X18 at *t* |
-| `full_history` | Up to 20 steps: X1–X18 + `years_before_anchor`, oldest to newest, zero padding after the real steps | 20 slots × (X1–X18, `years_before_anchor`, `present`) = 400 columns, aligned so the record at *t* is always slot `r0` |
+| `five_year` | Up to 5 steps: X1–X18 + `years_before_anchor`, oldest to newest, zero padding after the real steps | 5 slots × (X1–X18, `years_before_anchor`, `present`) = 100 columns, aligned so the record at *t* is always slot `r0` |
 
-- **All records up to *t*, never truncated.** The capacity is 20 records (the
-  1999–2018 span); a company with more raises an error. On the real data the
-  longest history is exactly 20 records (1,172 companies), and all 78,682 rows
-  are used.
+- **The latest five records up to *t*.** Companies with fewer keep all of
+  them; older records are dropped. On the real data 36,924 of the 78,682 rows
+  are used; 5,257 companies lose older records and 5,873 fill all five slots.
 - **Missing calendar years are skipped, not filled.** Every record carries
   `years_before_anchor` = *t* − year, so gaps stay visible: 2005, 2006, 2008
-  with *t* = 2008 gives offsets 3, 2, 0. 710 companies have at least one gap.
+  with *t* = 2008 gives offsets 3, 2, 0. 395 companies have a gap inside the
+  window, so their five records span more than five calendar years.
 - **GRU padding:** `lengths` stores the real length and `pack_histories` wraps
   PyTorch's `pack_padded_sequence`, so the GRU never reads padding and its final
   hidden state is the state at *t*.

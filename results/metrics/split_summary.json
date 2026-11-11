@@ -97,145 +97,93 @@
     }
   },
   "history_coverage": {
-    "capacity": 20,
+    "window": 5,
     "all": {
       "n_companies": 8971,
       "n_failed": 609,
-      "records_total": 78682,
+      "records_used": 36924,
+      "records_excluded": 41758,
+      "companies_with_excluded_records": 5257,
       "records_per_company": {
         "min": 1,
-        "median": 7.0,
-        "mean": 8.771,
-        "max": 20
+        "median": 5.0,
+        "mean": 4.116,
+        "max": 5
       },
-      "companies_with_gaps": 710,
-      "padded_slots_total": 100738,
+      "companies_with_gaps_in_window": 395,
+      "padded_slots_total": 7931,
       "companies_per_length": {
         "1": 755,
         "2": 906,
         "3": 756,
         "4": 681,
-        "5": 616,
-        "6": 573,
-        "7": 497,
-        "8": 427,
-        "9": 402,
-        "10": 265,
-        "11": 290,
-        "12": 295,
-        "13": 240,
-        "14": 194,
-        "15": 186,
-        "16": 168,
-        "17": 148,
-        "18": 158,
-        "19": 242,
-        "20": 1172
+        "5": 5873
       }
     },
     "test": {
       "n_companies": 1346,
       "n_failed": 92,
-      "records_total": 11786,
+      "records_used": 5538,
+      "records_excluded": 6248,
+      "companies_with_excluded_records": 786,
       "records_per_company": {
         "min": 1,
-        "median": 7.0,
-        "mean": 8.756,
-        "max": 20
+        "median": 5.0,
+        "mean": 4.114,
+        "max": 5
       },
-      "companies_with_gaps": 105,
-      "padded_slots_total": 15134,
+      "companies_with_gaps_in_window": 67,
+      "padded_slots_total": 1192,
       "companies_per_length": {
         "1": 114,
         "2": 136,
         "3": 113,
         "4": 102,
-        "5": 95,
-        "6": 72,
-        "7": 62,
-        "8": 79,
-        "9": 63,
-        "10": 45,
-        "11": 44,
-        "12": 46,
-        "13": 32,
-        "14": 43,
-        "15": 30,
-        "16": 27,
-        "17": 17,
-        "18": 23,
-        "19": 36,
-        "20": 167
+        "5": 881
       }
     },
     "train": {
       "n_companies": 6279,
       "n_failed": 426,
-      "records_total": 55302,
+      "records_used": 25846,
+      "records_excluded": 29456,
+      "companies_with_excluded_records": 3694,
       "records_per_company": {
         "min": 1,
-        "median": 7.0,
-        "mean": 8.807,
-        "max": 20
+        "median": 5.0,
+        "mean": 4.116,
+        "max": 5
       },
-      "companies_with_gaps": 483,
-      "padded_slots_total": 70278,
+      "companies_with_gaps_in_window": 260,
+      "padded_slots_total": 5549,
       "companies_per_length": {
         "1": 528,
         "2": 634,
         "3": 529,
         "4": 477,
-        "5": 417,
-        "6": 410,
-        "7": 352,
-        "8": 275,
-        "9": 278,
-        "10": 183,
-        "11": 208,
-        "12": 209,
-        "13": 184,
-        "14": 126,
-        "15": 136,
-        "16": 121,
-        "17": 104,
-        "18": 109,
-        "19": 168,
-        "20": 831
+        "5": 4111
       }
     },
     "validation": {
       "n_companies": 1346,
       "n_failed": 91,
-      "records_total": 11594,
+      "records_used": 5540,
+      "records_excluded": 6054,
+      "companies_with_excluded_records": 777,
       "records_per_company": {
         "min": 1,
-        "median": 7.0,
-        "mean": 8.614,
-        "max": 20
+        "median": 5.0,
+        "mean": 4.116,
+        "max": 5
       },
-      "companies_with_gaps": 122,
-      "padded_slots_total": 15326,
+      "companies_with_gaps_in_window": 68,
+      "padded_slots_total": 1190,
       "companies_per_length": {
         "1": 113,
         "2": 136,
         "3": 114,
         "4": 102,
-        "5": 104,
-        "6": 91,
-        "7": 83,
-        "8": 73,
-        "9": 61,
-        "10": 37,
-        "11": 38,
-        "12": 40,
-        "13": 24,
-        "14": 25,
-        "15": 20,
-        "16": 20,
-        "17": 27,
-        "18": 26,
-        "19": 38,
-        "20": 174
+        "5": 881
       }
     }
   }

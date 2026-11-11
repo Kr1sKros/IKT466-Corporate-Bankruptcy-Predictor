@@ -24,13 +24,13 @@ dataset:
     report: results/metrics/data_audit.json
 
 # The protocol is declared in study_plan and docs/study-design.md. Inputs for
-# both conditions are implemented (#48-#51); #53-#56, #60/#62/#70 must implement
+# both conditions are implemented (#48-#51; five-year scope #16); #53-#56, #60/#62/#70 must implement
 # the runners before the experiments run.
 study_plan:
   models: [logistic_regression, xgboost, mlp, gru]
-  input_conditions: [latest_year, full_history]
+  input_conditions: [latest_year, five_year]
   configuration_count: 8
-  full_history_capacity: 20  # Declared dataset schema span, 1999–2018; never truncate.
+  five_year_window: 5  # Latest five recorded years up to t; older records excluded.
   shared_company_split: true
   tuning:
     framework: optuna
@@ -48,11 +48,11 @@ study_plan:
 # Input representation (#48-#51, src/sequences.py, README section 12).
 inputs:
   anchor: latest_company_year
-  conditions: [latest_year, full_history]
+  conditions: [latest_year, five_year]
   latest_year: x1_to_x18_at_anchor  # No length or temporal fields added.
-  full_history:
-    records: all_up_to_anchor  # Never truncated; capacity overflow raises.
-    capacity: 20  # = study_plan.full_history_capacity.
+  five_year:
+    records: latest_five_up_to_anchor  # All of them if fewer than five; older ones dropped.
+    window: 5  # = study_plan.five_year_window. May span >5 calendar years with gaps.
     missing_year_policy: skip_gaps  # Gaps visible through the offset.
     temporal_input: years_before_anchor  # t - year; 0 at t.
     gru:
