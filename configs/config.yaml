@@ -1,4 +1,4 @@
-# Planning template only. Null settings require agreement before experiments.
+# LR and XGBoost have runnable searches; null settings remain planning choices.
 random_seed: 42
 
 dataset:
@@ -106,10 +106,17 @@ models:
       C_high: 10000.0
       positive_class_weight: log_1_to_training_ratio
   xgboost:
-    n_estimators: null
-    max_depth: null
-    learning_rate: null
-    scale_pos_weight: null
+    positive_class_weight: log_1_to_training_ratio
+    # Same post-pilot space in both conditions; see docs/xgboost-experiments.md.
+    search:
+      n_estimators: {low: 100, high: 1000}
+      max_depth: {low: 2, high: 10}
+      learning_rate: {low: 0.01, high: 0.3, log: true}
+      min_child_weight: {low: 1.0, high: 10.0, log: true}
+      subsample: {low: 0.5, high: 1.0}
+      colsample_bytree: {low: 0.5, high: 1.0}
+      reg_lambda: {low: 0.1, high: 10.0, log: true}
+      reg_alpha: {low: 0.001, high: 10.0, log: true}
   mlp:
     # Optuna search space (#70); same ranges as the GRU, identical for both conditions.
     search_space:

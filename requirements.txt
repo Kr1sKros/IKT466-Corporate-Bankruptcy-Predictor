@@ -1,7 +1,7 @@
 numpy
 pandas>=2.0,<3.0
 scikit-learn
-xgboost
+xgboost>=3,<4
 torch
 optuna>=4,<6
 matplotlib
