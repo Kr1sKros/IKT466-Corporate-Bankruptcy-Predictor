@@ -1,14 +1,20 @@
-"""Training-anchor fitting, leakage protection, serialization and input layouts."""
+"""Per-condition training fits, leakage protection, serialization and input layouts."""
 import copy
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from preprocessing import (AnchorPreprocessor, company_table, fit_preprocessor,
-                           transform_features, transform_histories)
-from sequences import create_histories, flatten_histories, valid_step_mask
+from preprocessing import (FittedPreprocessor, company_table, fit_preprocessor,
+                           training_fit_rows, transform_features, transform_histories)
+from sequences import create_histories, flatten_histories, valid_step_mask, valid_steps
 from validation import FEATURE_COLUMNS
+
+# Training values per condition (every feature = year - 2000):
+# latest_year: C_1 2006 -> 6, C_2 2004 -> 4.
+# five_year:   C_1 2002-2006 -> 2..6, C_2 2001, 2004 -> 1, 4. C_1 2000-2001 excluded.
+LATEST_FIT = np.array([6., 4.])
+FIVE_FIT = np.array([2., 3., 4., 5., 6., 1., 4.])
 
 
 @pytest.fixture
@@ -27,21 +33,45 @@ def panel():
     return data, splits
 
 
-def test_fits_only_training_anchors_and_constant_features(panel):
+def test_each_condition_is_fitted_on_its_own_training_rows(panel):
     data, splits = panel
     data['X18'] = 7.
     fitted = fit_preprocessor(data, splits)
-    assert fitted.record['mean'][:17] == [5.] * 17
-    assert fitted.record['scale'] == [1.] * 18
-    assert fitted.record['n_training_companies'] == 2
-    assert fitted.record['fitting_observations'] == [
-        {'company_name': 'C_1', 'anchor_year': 2006},
-        {'company_name': 'C_2', 'anchor_year': 2004}]
-    # Older training data and all validation/test features cannot influence fit.
+    latest, five = fitted.record['conditions']['latest_year'], fitted.record['conditions']['five_year']
+    assert latest['mean'][:17] == [LATEST_FIT.mean()] * 17
+    assert latest['scale'][:17] == [LATEST_FIT.std()] * 17
+    np.testing.assert_allclose(five['mean'][:17], FIVE_FIT.mean())
+    np.testing.assert_allclose(five['scale'][:17], FIVE_FIT.std())
+    assert latest['scale'][17] == five['scale'][17] == 1.  # constant column
+    assert latest['fitting_years'] == {'C_1': [2006], 'C_2': [2004]}
+    assert five['fitting_years'] == {'C_1': [2002, 2003, 2004, 2005, 2006], 'C_2': [2001, 2004]}
+    assert (latest['n_fitting_observations'], five['n_fitting_observations']) == (2, 7)
+    assert latest['n_training_companies'] == five['n_training_companies'] == 2
+
+
+def test_fit_ignores_older_years_and_held_out_companies(panel):
+    data, splits = panel
+    fitted = fit_preprocessor(data, splits)
+    # Validation/test companies and training years before the window: no effect.
     modified = data.copy()
-    is_anchor = ((modified.company_name == 'C_1') & (modified.year == 2006)) | ((modified.company_name == 'C_2') & (modified.year == 2004))
-    modified.loc[~is_anchor, FEATURE_COLUMNS] = 1e12
+    outside = data.company_name.isin(['C_3', 'C_4']) | ((data.company_name == 'C_1') & (data.year < 2002))
+    modified.loc[outside, FEATURE_COLUMNS] = 1e12
     assert fit_preprocessor(modified, splits).record == fitted.record
+    # An older year inside the five-year window changes only the five_year fit.
+    modified = data.copy()
+    modified.loc[(data.company_name == 'C_1') & (data.year == 2003), FEATURE_COLUMNS] = 100.
+    changed = fit_preprocessor(modified, splits).record['conditions']
+    assert changed['latest_year'] == fitted.record['conditions']['latest_year']
+    assert changed['five_year']['mean'] != fitted.record['conditions']['five_year']['mean']
+
+
+@pytest.mark.parametrize('condition', ['latest_year', 'five_year'])
+def test_fit_rows_are_the_real_training_steps_of_the_inputs(panel, condition):
+    data, splits = panel
+    rows = training_fit_rows(data, splits, condition=condition)
+    train = splits.loc[splits.split.eq('train'), 'company_name']
+    steps = valid_steps(create_histories(data, condition=condition, companies=train))
+    np.testing.assert_array_equal(rows[FEATURE_COLUMNS].to_numpy(np.float32), steps[:, :18])
 
 
 @pytest.mark.parametrize('model', ['logistic_regression', 'xgboost', 'mlp', 'gru'])
@@ -49,6 +79,7 @@ def test_fits_only_training_anchors_and_constant_features(panel):
 def test_all_eight_paths_preserve_ids_padding_and_offsets(panel, model, condition):
     data, splits = panel
     fitted = fit_preprocessor(data, splits)
+    fit = LATEST_FIT if condition == 'latest_year' else FIVE_FIT
     raw = create_histories(data, condition=condition)
     before = raw.features.copy()
     result = transform_histories(raw, fitted, model=model)
@@ -56,8 +87,8 @@ def test_all_eight_paths_preserve_ids_padding_and_offsets(panel, model, conditio
     mask = valid_step_mask(result)
     expected = raw.features[mask, :18]
     if model != 'xgboost':
-        expected = expected - 5
-    np.testing.assert_allclose(result.features[mask, :18], expected)
+        expected = (expected - fit.mean()) / fit.std()
+    np.testing.assert_allclose(result.features[mask, :18], expected, rtol=1e-6)
     assert (result.features[~mask] == 0).all()
     np.testing.assert_array_equal(result.lengths, raw.lengths)
     pd.testing.assert_frame_equal(result.metadata, raw.metadata)
@@ -70,7 +101,8 @@ def test_all_eight_paths_preserve_ids_padding_and_offsets(panel, model, conditio
         assert flat.loc[1, 'present_r2'] == 0
         assert flat.loc[1, 'years_before_anchor_r1'] == 3
         assert flat.loc[1, 'X1_r2'] == 0
-        assert flat.loc[1, 'X1_r0'] == (4 if model == 'xgboost' else -1)
+        scaled_r0 = 4 if model == 'xgboost' else (4 - fit.mean()) / fit.std()
+        assert flat.loc[1, 'X1_r0'] == pytest.approx(scaled_r0)
 
 
 def test_save_load_and_schema_rejection(panel, tmp_path):
@@ -78,16 +110,24 @@ def test_save_load_and_schema_rejection(panel, tmp_path):
     fitted = fit_preprocessor(data, splits)
     path = tmp_path / 'transform.json'
     fitted.save(path)
-    loaded = AnchorPreprocessor.load(path)
+    loaded = FittedPreprocessor.load(path)
     values = data[FEATURE_COLUMNS]
-    np.testing.assert_array_equal(transform_features(values, fitted, model='mlp'),
-                                  transform_features(values, loaded, model='mlp'))
+    for condition in ('latest_year', 'five_year'):
+        np.testing.assert_array_equal(
+            transform_features(values, fitted, model='mlp', condition=condition),
+            transform_features(values, loaded, model='mlp', condition=condition))
     with pytest.raises(ValueError):
-        loaded.transform(values[FEATURE_COLUMNS[::-1]], model='mlp')
+        loaded.transform(values[FEATURE_COLUMNS[::-1]], model='mlp', condition='latest_year')
+    with pytest.raises(ValueError, match='supports'):
+        loaded.transform(values, model='mlp', condition='full_history')
     record = copy.deepcopy(fitted.record)
-    record['schemas']['five_year']['sequence'].reverse()
+    record['conditions']['five_year']['schema']['sequence'].reverse()
     with pytest.raises(ValueError):
-        AnchorPreprocessor(record)
+        FittedPreprocessor(record)
+    record = copy.deepcopy(fitted.record)
+    del record['conditions']['latest_year']
+    with pytest.raises(ValueError):
+        FittedPreprocessor(record)
 
 
 def test_missing_values_not_padding(panel):
@@ -99,7 +139,7 @@ def test_missing_values_not_padding(panel):
     history.features[0, 0, 0] = np.nan
     with pytest.raises(ValueError):
         transform_histories(history, fitted, model='gru')
-    data.loc[(data.company_name == 'C_1') & (data.year == 2006), 'X1'] = np.nan
+    data.loc[(data.company_name == 'C_1') & (data.year == 2003), 'X1'] = np.nan
     with pytest.raises(ValueError):
         fit_preprocessor(data, splits)
 
@@ -135,10 +175,12 @@ def test_preparation_script_roundtrip(panel, tmp_path, monkeypatch):
     monkeypatch.setattr(sys, 'argv', ['prepare_preprocessing', '--csv', str(csv),
                         '--config', str(cfg), '--output', str(output), '--report', str(report)])
     module.main()
-    loaded = AnchorPreprocessor.load(output)
-    assert loaded.record['mean'] == [5.] * 18
+    loaded = FittedPreprocessor.load(output)
+    assert loaded.record['conditions']['latest_year']['mean'] == [LATEST_FIT.mean()] * 18
     assert loaded.record['provenance']['split_sha256'] == hashes
-    assert json.loads(report.read_text())['n_companies'] == 2
+    conditions = json.loads(report.read_text())['conditions']
+    assert conditions['latest_year']['n_observations'] == 2
+    assert conditions['five_year']['n_observations'] == 7
     config['preprocessing']['scaling_strategy'] = 'robust'
     cfg.write_text(yaml.safe_dump(config))
     with pytest.raises(ValueError, match='policy'):

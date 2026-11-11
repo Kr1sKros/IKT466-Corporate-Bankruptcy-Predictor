@@ -1,4 +1,4 @@
-"""Fit and inspect preprocessing using only persisted training anchor rows."""
+"""Fit and inspect the per-condition preprocessing on persisted training rows only."""
 import argparse
 import json
 from pathlib import Path
@@ -7,39 +7,22 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from preprocessing import (file_sha256, fit_preprocessor, load_splits,
-                           training_anchor_rows)
+from preprocessing import (FIT_POPULATIONS, MODEL_STRATEGIES, file_sha256,
+                           fit_preprocessor, load_splits, training_fit_rows)
 from validation import FEATURE_COLUMNS
 
+EXPECTED_POLICY = {
+    'scaling_strategy': 'standard', 'missing_value_strategy': 'error',
+    'fit_population': FIT_POPULATIONS,
+    'reuse_across_input_conditions': False, 'fit_on_training_only': True,
+    'model_scaling': MODEL_STRATEGIES,
+    'relative_offsets': 'unchanged', 'padding': 'zero_after_transform',
+}
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--csv', type=Path, required=True)
-    parser.add_argument('--config', type=Path, default=Path('configs/config.yaml'))
-    parser.add_argument('--output', type=Path, default=Path('results/models/anchor_preprocessor.json'))
-    parser.add_argument('--report', type=Path, default=Path('results/metrics/training_anchor_distribution.json'))
-    args = parser.parse_args()
-    config = yaml.safe_load(args.config.read_text(encoding='utf-8'))
-    policy = config['preprocessing']
-    expected_policy = {
-        'scaling_strategy': 'standard', 'missing_value_strategy': 'error',
-        'fit_population': 'training_company_final_year',
-        'reuse_across_input_conditions': True, 'fit_on_training_only': True,
-        'model_scaling': {'logistic_regression': 'standard', 'xgboost': 'identity',
-                          'mlp': 'standard', 'gru': 'standard'},
-        'relative_offsets': 'unchanged', 'padding': 'zero_after_transform',
-    }
-    if any(policy.get(key) != value for key, value in expected_policy.items()):
-        raise ValueError('Configuration differs from the agreed fixed preprocessing policy')
-    if file_sha256(args.csv) != config['dataset']['sha256']:
-        raise ValueError('Dataset differs from the audited CSV')
-    split = config['split']
-    companies = load_splits(split['directory'], expected_sha256=split['sha256'])
-    data = pd.read_csv(args.csv)
-    fitted = fit_preprocessor(data, companies)
-    values = training_anchor_rows(data, companies)[FEATURE_COLUMNS]
+
+def describe(values: pd.DataFrame, standardized: np.ndarray) -> dict:
+    """Per-feature distribution of the fitting rows (training data only)."""
     diagnostics = {}
-    standardized = fitted.transform(values, model='gru')
     for name in FEATURE_COLUMNS:
         col = values[name]
         skew = float(col.skew()) if len(col) >= 3 and col.nunique() > 1 else None
@@ -55,19 +38,53 @@ def main():
             'outside_1_5_iqr_fraction': float(((col < q1 - 1.5 * iqr) | (col > q3 + 1.5 * iqr)).mean()),
             'max_absolute_standardized': float(np.abs(standardized[:, FEATURE_COLUMNS.index(name)]).max()),
         }
+    return diagnostics
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--csv', type=Path, required=True)
+    parser.add_argument('--config', type=Path, default=Path('configs/config.yaml'))
+    parser.add_argument('--output', type=Path, default=Path('results/models/preprocessor.json'))
+    parser.add_argument('--report', type=Path, default=Path('results/metrics/preprocessing_fit_distribution.json'))
+    args = parser.parse_args()
+    config = yaml.safe_load(args.config.read_text(encoding='utf-8'))
+    policy = config['preprocessing']
+    if any(policy.get(key) != value for key, value in EXPECTED_POLICY.items()):
+        raise ValueError('Configuration differs from the agreed fixed preprocessing policy')
+    if file_sha256(args.csv) != config['dataset']['sha256']:
+        raise ValueError('Dataset differs from the audited CSV')
+    split = config['split']
+    inputs = [args.csv, args.config, *(Path(split['directory']) / f'{p}.csv' for p in ('train', 'validation', 'test'))]
+    if args.output.resolve() == args.report.resolve() or any(
+            p.resolve() in {args.output.resolve(), args.report.resolve()} for p in inputs):
+        raise ValueError('Outputs must be distinct and cannot overwrite inputs')
+
+    companies = load_splits(split['directory'], expected_sha256=split['sha256'])
+    data = pd.read_csv(args.csv)
+    fitted = fit_preprocessor(data, companies)
     provenance = {'dataset_sha256': file_sha256(args.csv), 'split_sha256': split['sha256']}
     fitted.record['provenance'] = provenance
-    report = {'fitting_population': 'one final-year row per training company',
-              'n_companies': len(values), 'features': diagnostics, **provenance,
-              'policy': 'fixed StandardScaler for LR/MLP/GRU; identity for XGBoost; no Optuna selection'}
-    inputs = [args.csv, args.config, *(Path(split['directory']) / f'{p}.csv' for p in ('train', 'validation', 'test'))]
-    if args.output.resolve() == args.report.resolve() or any(p.resolve() in {args.output.resolve(), args.report.resolve()} for p in inputs):
-        raise ValueError('Outputs must be distinct and cannot overwrite inputs')
+
+    conditions = {}
+    for condition, population in FIT_POPULATIONS.items():
+        values = training_fit_rows(data, companies, condition=condition)[FEATURE_COLUMNS]
+        standardized = fitted.transform(values, model='gru', condition=condition)
+        conditions[condition] = {
+            'fitting_population': population,
+            'n_companies': fitted.record['conditions'][condition]['n_training_companies'],
+            'n_observations': len(values),
+            'features': describe(values, standardized),
+        }
+    report = {'conditions': conditions, **provenance,
+              'policy': 'fixed StandardScaler per condition for LR/MLP/GRU; identity for XGBoost; no Optuna selection'}
     report_text = json.dumps(report, indent=2, allow_nan=False) + '\n'
     fitted.save(args.output)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(report_text, encoding='utf-8')
-    print(json.dumps({'training_companies': len(values), 'report': str(args.report), 'transform': str(args.output)}))
+    print(json.dumps({c: {'companies': v['n_companies'], 'observations': v['n_observations']}
+                      for c, v in conditions.items()}))
+    print(json.dumps({'report': str(args.report), 'transform': str(args.output)}))
 
 
 if __name__ == '__main__':

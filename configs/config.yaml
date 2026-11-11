@@ -82,8 +82,10 @@ split:
 preprocessing:
   missing_value_strategy: error  # Audited financial cells are complete; no imputation.
   scaling_strategy: standard  # Fixed; never selected by Optuna.
-  fit_population: training_company_final_year
-  reuse_across_input_conditions: true
+  fit_population:  # Separate scaler per condition, fitted on the rows it uses.
+    latest_year: training_company_final_year
+    five_year: training_company_last_five_records
+  reuse_across_input_conditions: false
   model_scaling:
     logistic_regression: standard
     xgboost: identity
