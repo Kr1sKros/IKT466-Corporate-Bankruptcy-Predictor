@@ -197,7 +197,8 @@ the repository root; future config loading should resolve paths with `pathlib`.
 Downloading/loading, dataset validation, jointly stratified company splits,
 latest-year and five-year inputs (GRU sequences and flattened tables), shared
 metrics/reproducibility helpers and aligned saved-prediction comparison are
-implemented. Scaling, training runners, models and plotting remain incomplete.
+implemented, as is the fixed per-condition scaling (`docs/preprocessing.md`).
+Training runners, models and plotting remain incomplete.
 **All eight Optuna studies and paired-condition reporting are not yet
 implemented.**
 No trained models or experimental results are included. Settings marked `null`
@@ -416,8 +417,10 @@ same companies, anchors and targets.
   equals the corresponding GRU step.
 - **Latest year adds nothing else:** no history length or temporal fields. A
   one-record company has the same financial values in both conditions.
-- **Padding never enters fitted preprocessing:** scaling (#46) is fitted on real
-  records only (`valid_steps`), and padded slots are set back to 0 afterwards.
+- **Padding never enters fitted preprocessing:** scaling (#46) uses one
+  StandardScaler per condition, fitted on the real training records of that
+  condition only; padded slots are set back to 0 afterwards. XGBoost is not
+  scaled. Details: [docs/preprocessing.md](docs/preprocessing.md).
 - **Schema checks:** raw ID/label/year are never predictors, and the derived
   columns are validated against their exact expected order
   (`validate_tabular_columns`).
