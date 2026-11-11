@@ -199,9 +199,10 @@ latest-year and five-year inputs (GRU sequences and flattened tables), shared
 metrics/reproducibility helpers and aligned saved-prediction comparison are
 implemented, as are the fixed per-condition scaling (`docs/preprocessing.md`)
 and the leakage audit (`scripts/audit_leakage.py`, `docs/leakage-audit.md`).
-Training runners, models and plotting remain incomplete.
-**All eight Optuna studies and paired-condition reporting are not yet
-implemented.**
+The [XGBoost runner](docs/xgboost-experiments.md) implements separate latest-year
+and five-year Optuna studies with saved models and aligned predictions.
+Other model runners and plotting remain incomplete; the complete eight-study
+workflow and cross-model reporting are still pending.
 No trained models or experimental results are included. Settings marked `null`
 are unresolved choices, not runnable defaults.
 
