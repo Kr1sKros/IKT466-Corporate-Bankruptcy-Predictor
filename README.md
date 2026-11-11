@@ -197,7 +197,8 @@ the repository root; future config loading should resolve paths with `pathlib`.
 Downloading/loading, dataset validation, jointly stratified company splits,
 latest-year and five-year inputs (GRU sequences and flattened tables), shared
 metrics/reproducibility helpers and aligned saved-prediction comparison are
-implemented, as is the fixed per-condition scaling (`docs/preprocessing.md`).
+implemented, as are the fixed per-condition scaling (`docs/preprocessing.md`)
+and the leakage audit (`scripts/audit_leakage.py`, `docs/leakage-audit.md`).
 Training runners, models and plotting remain incomplete.
 **All eight Optuna studies and paired-condition reporting are not yet
 implemented.**
