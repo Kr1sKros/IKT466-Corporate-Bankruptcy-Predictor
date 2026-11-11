@@ -10,8 +10,8 @@
 pie showData
     title Project tasks
     "Done" : 26
-    "Due today or overdue" : 2
-    "Due later" : 29
+    "Due today or overdue" : 5
+    "Due later" : 26
 ```
 
 Counts exclude pull requests and parent issues to avoid counting work twice.
