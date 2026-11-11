@@ -7,20 +7,20 @@ the eight training experiments have run.
 
 ## Question and comparisons
 
-**Does using all available financial history improve corporate bankruptcy prediction
+**Does using five years of financial observations improve corporate bankruptcy prediction
 compared with using only the latest year, and how does this effect differ across
 model families?**
 
-| Model | `latest_year` | `full_history` |
+| Model | `latest_year` | `five_year` |
 |---|---|---|
-| Logistic regression | Latest annual features | Flattened full history |
-| XGBoost | Latest annual features | Flattened full history |
-| MLP | Latest annual features | Flattened full history |
+| Logistic regression | Latest annual features | Flattened five-year history |
+| XGBoost | Latest annual features | Flattened five-year history |
+| MLP | Latest annual features | Flattened five-year history |
 | GRU | One real timestep | Variable-length full sequence |
 
 Train eight separate configurations, not one model reused without retraining.
 Investigation 1 compares model families within each condition. Investigation 2
-compares conditions within each family. Report full-history minus latest-year AP
+compares conditions within each family. Report five-year minus latest-year AP
 and changes in precision/recall/F1, plus paired errors, computing cost and uncertainty.
 There is no mandatory k=1–5 sweep and no claim to identify an optimal history length.
 SVM is outside the agreed scope.
@@ -45,13 +45,13 @@ SVM is outside the agreed scope.
   strata for the main analysis; descriptive subdivisions of 5+ must disclose small
   counts. Do not retune models on test subgroup outcomes.
 
-## Full-history representation
+## Five-year representation
 
-All available means every observed annual record up to t, **not the last five**.
-The audited dataset spans 1999–2018: declare a fixed capacity of 20 observations
-from that documented coverage, with validation that no record is truncated. This
-capacity is a schema bound, not a statistic fitted to validation/test features.
-A newer dataset exceeding it must trigger an explicit versioned schema change.
+Confirmed 10 November 2026 (#16), replacing the earlier full-history plan: use the
+**five most recent recorded annual observations** ending at t, or all of them when
+a company has fewer than five. Older observations are excluded. With gaps, five
+records can span more than five calendar years. This is not an all-history
+experiment or a k=1–5 sweep.
 
 - Preserve each company's actual observation order and relative time offsets
   from t. Missing calendar years are skipped as observations but their gaps remain
@@ -73,11 +73,10 @@ A newer dataset exceeding it must trigger an explicit versioned schema change.
   length to this condition. A one-year GRU is a valid reference but cannot exploit
   changes across years. A company with one record has identical financial coverage
   under both conditions, although its separately trained models may predict differently.
-- History length and missingness can themselves predict status; full-history gains
+- History length and missingness can themselves predict status; five-year gains
   need not be evidence of learning financial trends. Discuss this limitation.
 
-These changes extend the current `create_histories` API, which is capped at five
-records. Reuse its ordering/packing checks rather than duplicating construction.
+Implemented in `src/sequences.py` (`create_histories`, `tabular_inputs`).
 
 ## Optuna selection and weights
 
