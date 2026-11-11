@@ -1,0 +1,302 @@
+{
+  "conditions": {
+    "five_year": {
+      "checkpoint_sha256": "17d31023415d6e2340d3e8f6cd1ab51bd996a80af9c310460fff74b2d0966c66",
+      "dataset_sha256": "cff2c899a97ecd629415cb22f59186000e74e1c0a78cfae036c0a53025419b5e",
+      "selection": {
+        "condition": "five_year",
+        "effective_training_class_weights": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "feature_columns": [
+          "X1_r4",
+          "X2_r4",
+          "X3_r4",
+          "X4_r4",
+          "X5_r4",
+          "X6_r4",
+          "X7_r4",
+          "X8_r4",
+          "X9_r4",
+          "X10_r4",
+          "X11_r4",
+          "X12_r4",
+          "X13_r4",
+          "X14_r4",
+          "X15_r4",
+          "X16_r4",
+          "X17_r4",
+          "X18_r4",
+          "years_before_anchor_r4",
+          "present_r4",
+          "X1_r3",
+          "X2_r3",
+          "X3_r3",
+          "X4_r3",
+          "X5_r3",
+          "X6_r3",
+          "X7_r3",
+          "X8_r3",
+          "X9_r3",
+          "X10_r3",
+          "X11_r3",
+          "X12_r3",
+          "X13_r3",
+          "X14_r3",
+          "X15_r3",
+          "X16_r3",
+          "X17_r3",
+          "X18_r3",
+          "years_before_anchor_r3",
+          "present_r3",
+          "X1_r2",
+          "X2_r2",
+          "X3_r2",
+          "X4_r2",
+          "X5_r2",
+          "X6_r2",
+          "X7_r2",
+          "X8_r2",
+          "X9_r2",
+          "X10_r2",
+          "X11_r2",
+          "X12_r2",
+          "X13_r2",
+          "X14_r2",
+          "X15_r2",
+          "X16_r2",
+          "X17_r2",
+          "X18_r2",
+          "years_before_anchor_r2",
+          "present_r2",
+          "X1_r1",
+          "X2_r1",
+          "X3_r1",
+          "X4_r1",
+          "X5_r1",
+          "X6_r1",
+          "X7_r1",
+          "X8_r1",
+          "X9_r1",
+          "X10_r1",
+          "X11_r1",
+          "X12_r1",
+          "X13_r1",
+          "X14_r1",
+          "X15_r1",
+          "X16_r1",
+          "X17_r1",
+          "X18_r1",
+          "years_before_anchor_r1",
+          "present_r1",
+          "X1_r0",
+          "X2_r0",
+          "X3_r0",
+          "X4_r0",
+          "X5_r0",
+          "X6_r0",
+          "X7_r0",
+          "X8_r0",
+          "X9_r0",
+          "X10_r0",
+          "X11_r0",
+          "X12_r0",
+          "X13_r0",
+          "X14_r0",
+          "X15_r0",
+          "X16_r0",
+          "X17_r0",
+          "X18_r0",
+          "years_before_anchor_r0",
+          "present_r0"
+        ],
+        "max_iter": 5000,
+        "model": "logistic_regression",
+        "n_iter": [
+          220
+        ],
+        "parameters": {
+          "C": 110.2182372686659,
+          "class_weight": null
+        },
+        "regularization": "L2",
+        "solver": "lbfgs",
+        "study_name": "logistic_regression__five_year__lr_issue53_run01",
+        "threshold": 0.11472765356302261,
+        "threshold_rule": "max_f1_highest_threshold_on_tie",
+        "threshold_source": "validation",
+        "tol": 0.0001,
+        "trial_number": 14,
+        "validation_average_precision": 0.3027163285881264
+      },
+      "software": {
+        "packages": {
+          "joblib": "1.6.0",
+          "numpy": "2.2.6",
+          "optuna": "4.9.0",
+          "pandas": "2.3.3",
+          "pyyaml": "6.0.3",
+          "scikit-learn": "1.9.1",
+          "threadpoolctl": "3.7.0",
+          "torch": "2.15.0",
+          "xgboost": "3.4.1"
+        },
+        "python": "3.12.10"
+      },
+      "source": {
+        "dirty_worktree": false,
+        "git_commit": "bb2240d712a2c61dcca3b19516947209cdf0a3c5"
+      },
+      "split_sha256": {
+        "test": "f4c9307d3ca500e6cb617a063f6b7d546b13cfcbc93504c00bc265d6c4bdc5fa",
+        "train": "22acdda6dcc0ddf4eb4970f330ee3da0c4e6a83f7953a7c71d40226a314ea8e6",
+        "validation": "f7e793099162a55f24a82fdec0bca4a60da5c6ffeae93ac7d4865bfba02d5eb2"
+      },
+      "study": {
+        "attempted": 20,
+        "budget": 20,
+        "budget_complete": true,
+        "completed": 20,
+        "elapsed_seconds": 2.4417702999780886,
+        "failed": 0,
+        "study_name": "logistic_regression__five_year__lr_issue53_run01"
+      },
+      "test_metrics": {
+        "accuracy": 0.8907875185735513,
+        "average_precision": 0.3202002275679503,
+        "confusion_matrix": [
+          [
+            1149,
+            105
+          ],
+          [
+            42,
+            50
+          ]
+        ],
+        "f1": 0.4048582995951417,
+        "fn": 42,
+        "fp": 105,
+        "n_observations": 1346,
+        "positive_label": 1,
+        "positive_prevalence": 0.06835066864784546,
+        "precision": 0.3225806451612903,
+        "recall": 0.5434782608695652,
+        "roc_auc": 0.8139865473961583,
+        "threshold": 0.11472765356302261,
+        "tn": 1149,
+        "tp": 50
+      }
+    },
+    "latest_year": {
+      "checkpoint_sha256": "204ff35ebecf725d2e00d81be0ac20abdb34f202ae7affe7011e86f87c2a8bbd",
+      "dataset_sha256": "cff2c899a97ecd629415cb22f59186000e74e1c0a78cfae036c0a53025419b5e",
+      "selection": {
+        "condition": "latest_year",
+        "effective_training_class_weights": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "feature_columns": [
+          "X1",
+          "X2",
+          "X3",
+          "X4",
+          "X5",
+          "X6",
+          "X7",
+          "X8",
+          "X9",
+          "X10",
+          "X11",
+          "X12",
+          "X13",
+          "X14",
+          "X15",
+          "X16",
+          "X17",
+          "X18"
+        ],
+        "max_iter": 5000,
+        "model": "logistic_regression",
+        "n_iter": [
+          40
+        ],
+        "parameters": {
+          "C": 10.353070210856437,
+          "class_weight": null
+        },
+        "regularization": "L2",
+        "solver": "lbfgs",
+        "study_name": "logistic_regression__latest_year__lr_issue53_run01",
+        "threshold": 0.08297386765480042,
+        "threshold_rule": "max_f1_highest_threshold_on_tie",
+        "threshold_source": "validation",
+        "tol": 0.0001,
+        "trial_number": 14,
+        "validation_average_precision": 0.2568333023022388
+      },
+      "software": {
+        "packages": {
+          "joblib": "1.6.0",
+          "numpy": "2.2.6",
+          "optuna": "4.9.0",
+          "pandas": "2.3.3",
+          "pyyaml": "6.0.3",
+          "scikit-learn": "1.9.1",
+          "threadpoolctl": "3.7.0",
+          "torch": "2.15.0",
+          "xgboost": "3.4.1"
+        },
+        "python": "3.12.10"
+      },
+      "source": {
+        "dirty_worktree": false,
+        "git_commit": "bb2240d712a2c61dcca3b19516947209cdf0a3c5"
+      },
+      "split_sha256": {
+        "test": "f4c9307d3ca500e6cb617a063f6b7d546b13cfcbc93504c00bc265d6c4bdc5fa",
+        "train": "22acdda6dcc0ddf4eb4970f330ee3da0c4e6a83f7953a7c71d40226a314ea8e6",
+        "validation": "f7e793099162a55f24a82fdec0bca4a60da5c6ffeae93ac7d4865bfba02d5eb2"
+      },
+      "study": {
+        "attempted": 20,
+        "budget": 20,
+        "budget_complete": true,
+        "completed": 20,
+        "elapsed_seconds": 1.8640760999987833,
+        "failed": 0,
+        "study_name": "logistic_regression__latest_year__lr_issue53_run01"
+      },
+      "test_metrics": {
+        "accuracy": 0.9019316493313522,
+        "average_precision": 0.29178592108636836,
+        "confusion_matrix": [
+          [
+            1172,
+            82
+          ],
+          [
+            50,
+            42
+          ]
+        ],
+        "f1": 0.3888888888888889,
+        "fn": 50,
+        "fp": 82,
+        "n_observations": 1346,
+        "positive_label": 1,
+        "positive_prevalence": 0.06835066864784546,
+        "precision": 0.3387096774193548,
+        "recall": 0.45652173913043476,
+        "roc_auc": 0.8125043339574232,
+        "threshold": 0.08297386765480042,
+        "tn": 1172,
+        "tp": 42
+      }
+    }
+  },
+  "note": "One seed-42 execution; no test-based tuning or causal claim.",
+  "run_id": "lr_issue53_run01"
+}

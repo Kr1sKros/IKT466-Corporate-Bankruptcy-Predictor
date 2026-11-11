@@ -69,3 +69,27 @@ full file-to-prediction execution, aligned output schemas and the test-access ga
 
 References: [scikit-learn LogisticRegression](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html),
 [Optuna study optimization](https://optuna.readthedocs.io/en/stable/reference/generated/optuna.study.Study.html).
+
+## Recorded execution: lr_issue53_run01
+
+Executed on 11 November 2026, source commit `bb2240d`, seed 42. Both studies
+completed all 20 attempted trials without convergence failures. Each selected
+trial used class_weight=None. Validation selected C=10.3531 (latest_year) and
+C=110.2182 (five_year); respective thresholds were 0.082974 and 0.114728.
+
+| Input | Validation AP | Test AP | Test precision | Test recall | Test F1 |
+|---|---:|---:|---:|---:|---:|
+| latest_year | 0.256833 | 0.291786 | 0.338710 | 0.456522 | 0.388889 |
+| five_year | 0.302716 | 0.320200 | 0.322581 | 0.543478 | 0.404858 |
+
+Both test files cover the same 1,346 companies, including 92 failures. Five-year
+inputs found 50 of those failures versus 42, while false positives increased
+from 82 to 105 at the separately validation-selected thresholds. This is one
+seeded run, not an uncertainty estimate or evidence of a causal history effect.
+Measured study durations were 1.86 and 2.44 seconds in this environment; these
+are study wall times, not total setup time or portable performance guarantees.
+
+The compact machine-readable record is [logistic-run-53.json](logistic-run-53.json).
+Full local artifacts are under `results/models/lr_issue53_run01/` (gitignored),
+including SQLite studies, pipelines, predictions and provenance. Reproduce them
+with the command above using a new output directory. Validation: 145 tests passed.
