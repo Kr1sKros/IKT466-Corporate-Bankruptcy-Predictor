@@ -113,14 +113,24 @@ models:
   mlp:
     hidden_sizes: null
   gru:
-    hidden_size: null
-    num_layers: null
+    # Optuna search space (#55); identical for latest_year and five_year.
+    search_space:
+      hidden_size: [16, 32, 64, 128, 256]
+      num_layers: [1, 2, 3]
+      dropout: [0.0, 0.5]  # Before the head; also between GRU layers when num_layers > 1.
+      learning_rate: [1.0e-4, 1.0e-2]  # Log scale.
+      weight_decay: [1.0e-6, 1.0e-3]  # Log scale.
+      pos_weight: [1.0, train_negative_to_positive_ratio]  # Log scale; leakage.class_weight_bounds.
+      batch_size: [128, 256, 512]
+    head: dropout_linear  # Hidden state at t -> dropout -> Linear(hidden, 1) -> logit.
 
+# Shared neural training rules (MLP and GRU); lr/batch size come from Optuna.
 training:
-  epochs: null
-  batch_size: null
-  learning_rate: null
-  early_stopping_patience: null
+  optimizer: adam
+  max_epochs: 200
+  early_stopping_patience: 20  # Epochs without a better validation AP.
+  selection_metric: validation_average_precision  # Unweighted.
+  restore_best_checkpoint: true
 
 evaluation:
   main_metric: average_precision  # Chosen PR-AUC summary; document convention.
