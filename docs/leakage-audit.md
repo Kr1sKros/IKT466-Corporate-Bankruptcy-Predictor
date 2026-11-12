@@ -28,7 +28,7 @@ seed-42 split, 11 November 2026.
 | Preprocessing | Each condition's scaler is fitted on training companies only, on exactly that condition's rows, and equals a refit | latest_year 6,279 rows, five_year 25,846 rows, 0 non-training companies |
 | | Transforming keeps padding at 0 and offsets unchanged, for all four models | Pass |
 | Class weights | `class_weight_bounds` uses training labels only (426 failed / 5,853 alive, ratio 13.74) | Changing validation/test labels does not change it |
-| Study plan (config) | 4 models × 2 conditions = 8 separate studies; Optuna TPE, seed 42; objective validation AP; one budget of 20 trials for every study; `n_jobs` 1, no pruning; class weights tuned; one shared split; identical test companies; `target_verified: false` | Pass |
+| Study plan (config) | 4 models × 2 conditions = 8 separate studies; Optuna TPE, seed 42; objective validation AP; one budget of trials for every study (100 since #56); `n_jobs` 1, no pruning; class weights tuned; one shared split; identical test companies; `target_verified: false` | Pass |
 
 No financial row is duplicated across companies or partitions, so the same
 filing cannot appear in two partitions under different IDs.
@@ -59,9 +59,10 @@ so results show generalization to unseen companies, not to future years.
 
 ## Not yet auditable (open)
 
-- **Saved Optuna studies.** No runners exist yet (#53–#56). Once #56 saves the
-  studies, they still need checking: validation-only selection, 20 attempted
-  trials in each of the eight studies, and frozen settings, checkpoints and
+- **Saved Optuna studies.** All runners exist (#53–#56) and `run_studies.py`
+  writes `frozen_studies.json` only when all eight studies are complete. The
+  saved main-search studies still need auditing once run: validation-only
+  selection, the full budget in each study, and frozen settings, checkpoints and
   thresholds before test. `check_study_plan` only covers the declared plan.
 - **Decision threshold.** `evaluation.decision_threshold` is still `null`. It
   must be selected on validation only and frozen before test.

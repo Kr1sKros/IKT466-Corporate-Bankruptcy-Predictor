@@ -83,8 +83,8 @@ Implemented in `src/sequences.py` (`create_histories`, `tabular_inputs`).
 - One independent study per model × input condition: eight studies, with unique
   model/condition/split identifiers and separate output directories.
 - Use seeded `TPESampler`, maximise validation **Average Precision**, and use a
-  common predeclared trial budget. The initial planning budget is **20 attempted
-  trials per study**, subject to one documented pilot review before main searches.
+  common predeclared trial budget: **100 attempted trials per study**, raised from
+  the 20-trial pilot before the main searches (#56; see `docs/studies.md`).
   A budget change applies to every study, not selectively after viewing results.
 - Use sequential study execution (`n_jobs=1`) for reproducibility and no Optuna
   pruning in the initial protocol. Neural early stopping is allowed under the same

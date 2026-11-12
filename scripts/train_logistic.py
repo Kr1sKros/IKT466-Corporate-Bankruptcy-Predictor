@@ -13,10 +13,11 @@ from leakage import check_partitions, check_study_plan, check_preprocessor
 from models.logistic_regression import LogisticPipeline, tune_condition, write_json
 from preprocessing import FittedPreprocessor, load_splits, split_paths, file_sha256, transform_histories
 from reproducibility import configure_reproducibility, file_provenance, write_run_metadata
-from sequences import create_histories, flatten_histories
+from sequences import CONDITIONS, create_histories, flatten_histories
+from studies import add_conditions_argument, select_conditions
 
 
-def run(csv, config_path, output, preprocessor_path=Path("results/models/preprocessor.json")):
+def run(csv, config_path, output, preprocessor_path=Path("results/models/preprocessor.json"), conditions=None):
     csv, config_path, output = Path(csv), Path(config_path), Path(output)
     config = yaml.safe_load(config_path.read_text(encoding='utf-8'))
     check_study_plan(config)
@@ -57,7 +58,9 @@ def run(csv, config_path, output, preprocessor_path=Path("results/models/preproc
     lr = config['models']['logistic_regression']
     start = perf_counter()
     selections = {}
-    for condition in config['study_plan']['input_conditions']:
+    if tuple(config['study_plan']['input_conditions']) != CONDITIONS:
+        raise ValueError('Declared input conditions differ from the implemented ones')
+    for condition in select_conditions(conditions):
         partitions = {}
         for split in ('train', 'validation'):
             ids = companies.loc[companies['split'].eq(split), 'company_name']
@@ -108,8 +111,9 @@ def main():
     parser.add_argument('--config', default=Path('configs/config.yaml'), type=Path)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--preprocessor', default=Path('results/models/preprocessor.json'), type=Path)
+    add_conditions_argument(parser)
     args = parser.parse_args()
-    result = run(args.csv, args.config, args.output, args.preprocessor)
+    result = run(args.csv, args.config, args.output, args.preprocessor, args.conditions)
     print({name: selection['validation_average_precision'] for name, selection in result['selections'].items()})
 
 
