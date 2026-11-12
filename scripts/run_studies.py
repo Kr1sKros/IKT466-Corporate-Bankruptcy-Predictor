@@ -32,13 +32,15 @@ THREAD_VARIABLES = ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'
 
 
 def single_thread_env():
-    """Each study uses one thread for every numeric library.
+    """Each study uses one CPU thread for every numeric library and sees no GPU.
 
     Containers often show the host's cores (e.g. 96) while allowing only a few;
     libraries would then start dozens of threads per study and slow everything.
+    The studies are CPU-only by design, so GPUs are hidden; this also avoids
+    failures from a GPU driver that is older than the installed PyTorch build.
     """
     import os
-    return {**os.environ, **{name: '1' for name in THREAD_VARIABLES}}
+    return {**os.environ, **{name: '1' for name in THREAD_VARIABLES}, 'CUDA_VISIBLE_DEVICES': ''}
 
 
 def job_name(model, condition):

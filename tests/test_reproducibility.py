@@ -111,3 +111,32 @@ def test_metadata_hashes_inputs_checkpoint_and_records_runtime(tmp_path, family)
             dataset=files['dataset'], configuration=files['configuration'],
             splits={name: files[name] for name in ['train', 'validation', 'test']})
     assert files['dataset'].read_bytes() == b'dataset'
+
+
+def test_broken_gpu_driver_is_recorded_not_fatal():
+    """A GPU driver older than the torch CUDA build must not stop a CPU run."""
+    from reproducibility import _cuda_description
+
+    class Broken:
+        class cuda:
+            @staticmethod
+            def is_available():
+                return True
+
+            @staticmethod
+            def device_count():
+                return 1
+
+            @staticmethod
+            def get_device_name(i):
+                raise RuntimeError('The NVIDIA driver on your system is too old')
+
+        class backends:
+            class cudnn:
+                @staticmethod
+                def version():
+                    return 1
+
+    record = _cuda_description(Broken)
+    assert record['cuda_available'] is False and record['cuda_devices'] == []
+    assert 'too old' in record['cuda_error']

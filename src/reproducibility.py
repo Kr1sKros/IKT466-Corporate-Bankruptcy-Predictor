@@ -107,6 +107,18 @@ def file_provenance(path: str | Path) -> dict[str, object]:
     return {'path': str(path), 'sha256': digest.hexdigest(), 'size_bytes': size}
 
 
+def _cuda_description(torch) -> dict[str, object]:
+    """GPU facts for the record. Training is CPU-only, so a broken or too-old
+    GPU driver is recorded instead of failing the run."""
+    try:
+        return {'cuda_available': torch.cuda.is_available(),
+                'cudnn_version': torch.backends.cudnn.version(),
+                'cuda_devices': [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]}
+    except Exception as error:  # e.g. driver older than the CUDA build of torch
+        return {'cuda_available': False, 'cudnn_version': None, 'cuda_devices': [],
+                'cuda_error': f'{type(error).__name__}: {error}'}
+
+
 def write_run_metadata(
     output: str | Path, *, model: str, parameters: dict, seed_settings: dict,
     dataset: str | Path, splits: dict[str, str | Path], configuration: str | Path,
@@ -151,9 +163,7 @@ def write_run_metadata(
         'software': {'python': platform.python_version(), 'packages': packages},
         'hardware': {
             'platform': platform.platform(), 'machine': platform.machine(),
-            'cuda_available': torch.cuda.is_available(), 'cuda_version': torch.version.cuda,
-            'cudnn_version': torch.backends.cudnn.version(),
-            'cuda_devices': [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())],
+            'cuda_version': torch.version.cuda, **_cuda_description(torch),
         },
     }
     # Serialize before touching output so non-JSON values cannot leave partial metadata.
