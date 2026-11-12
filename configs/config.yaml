@@ -24,8 +24,8 @@ dataset:
     report: results/metrics/data_audit.json
 
 # The protocol is declared in study_plan and docs/study-design.md. Inputs for
-# both conditions are implemented (#48-#51; five-year scope #16); #53-#56, #60/#62/#70 must implement
-# the runners before the experiments run.
+# both conditions are implemented (#48-#51; five-year scope #16). All eight studies
+# run through scripts/run_studies.py (#56); test evaluation follows in #60/#62.
 study_plan:
   models: [logistic_regression, xgboost, mlp, gru]
   input_conditions: [latest_year, five_year]
@@ -38,7 +38,10 @@ study_plan:
     sampler_seed: 42
     direction: maximize
     objective: validation_average_precision
-    attempted_trials_per_study: 20  # Initial pilot budget, identical across studies.
+    # Same for all eight studies. Raised from the 20-trial pilot (#56): TPE samples
+    # the first 10 trials at random, so 20 left only ~10 guided trials for the
+    # 7-9 parameter XGBoost/MLP/GRU spaces against 2 for LR.
+    attempted_trials_per_study: 100
     n_jobs: 1
     pruning: none
     separate_study_per_model_and_condition: true

@@ -87,7 +87,7 @@ reflect history length/missingness signals and separately selected model capacit
 Use one independent Optuna study per model/input combination, maximising
 validation **Average Precision (AP)** with seeded `TPESampler`. Use the same
 search method and predeclared trial budget for all eight studies; the initial
-planning budget is 20 attempted trials per study. Model-specific search spaces
+budget is 100 attempted trials per study (raised from the 20-trial pilot, #56). Model-specific search spaces
 stay consistent between paired input conditions where applicable. Best settings
 are allowed to differ. Record actual computing cost as well as trial counts.
 
@@ -151,6 +151,7 @@ The project uses a simple `src/` layout without an additional project-package fo
 │   ├── train_xgboost.py
 │   ├── train_mlp.py
 │   ├── train_gru.py
+│   ├── run_studies.py            # All eight studies, validation only (docs/studies.md)
 │   ├── compare_models.py
 │   └── compare_lookback.py         # Legacy stub; to become paired input-condition comparison
 ├── tests/

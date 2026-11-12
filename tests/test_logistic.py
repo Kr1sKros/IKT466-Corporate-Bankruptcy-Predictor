@@ -56,7 +56,7 @@ def test_all_failed_study_has_no_selection(tmp_path, monkeypatch):
     def fail(*args):
         raise ConvergenceError('deliberate test failure')
     monkeypatch.setattr(lr, 'train_model', fail)
-    with pytest.raises(RuntimeError, match='no converged'):
+    with pytest.raises(RuntimeError, match='wholly failed'):
         tune_condition(np.ones((4, 2)), [0, 0, 1, 1], np.ones((2, 2)), [0, 1],
             directory=tmp_path / 'failed', study_name='failed', seed=42, sampler_seed=42,
             trials=2, search={'C_low': .01, 'C_high': 1})

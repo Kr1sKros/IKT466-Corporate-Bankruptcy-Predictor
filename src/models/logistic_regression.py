@@ -4,12 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from time import perf_counter
 import warnings
 
 import joblib
 import numpy as np
-import optuna
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import LogisticRegression
 from leakage import class_weight_bounds
@@ -20,6 +18,7 @@ from metrics import compute_metrics, select_validation_threshold
 from preprocessing import transform_histories
 from reproducibility import estimator_seed_parameters
 from sequences import create_histories, flatten_histories, tabular_columns
+from studies import THRESHOLD_RULE, check_budget, create_study, record_failure, run_study
 
 
 class ConvergenceError(RuntimeError):
@@ -76,8 +75,7 @@ def tune_condition(x_train, y_train, x_validation, y_validation, *, directory,
     """Only train/validation inputs accepted: test data cannot enter selection."""
     if set(np.unique(y_validation)) != {0, 1}:
         raise ValueError('Validation labels must contain both classes')
-    if isinstance(trials, bool) or not isinstance(trials, int) or trials < 1:
-        raise ValueError('A positive attempted-trial budget is required')
+    check_budget(trials)
     if set(np.unique(y_train)) != {0, 1}:
         raise ValueError('Training labels must contain both classes')
     bounds = class_weight_bounds(pd.DataFrame({'target': np.asarray(y_train), 'split': 'train'}))
@@ -85,14 +83,9 @@ def tune_condition(x_train, y_train, x_validation, y_validation, *, directory,
     if max_weight < 1:
         raise ValueError('Training negative/positive ratio must be at least 1')
     directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=False)
-    start = perf_counter()
-    study = optuna.create_study(study_name=study_name, direction='maximize',
-        sampler=optuna.samplers.TPESampler(seed=sampler_seed), pruner=optuna.pruners.NopPruner(),
-        storage='sqlite:///' + (directory / 'study.sqlite3').resolve().as_posix())
-    study.set_user_attr('protocol', {'objective': 'validation_average_precision', 'attempted_trials': trials,
-                                   'sampler_seed': sampler_seed, 'training_seed': seed,
-                                   'n_jobs': 1, 'pruning': 'none', 'search': search, 'class_weight_bounds': bounds})
+    study = create_study(directory, study_name=study_name, sampler_seed=sampler_seed, trials=trials,
+                         protocol={'model': 'logistic_regression', 'training_seed': seed,
+                                   'search': search, 'class_weight_bounds': bounds})
 
     def objective(trial):
         params = {'C': trial.suggest_float('C', search['C_low'], search['C_high'], log=True),
@@ -108,30 +101,11 @@ def tune_condition(x_train, y_train, x_validation, y_validation, *, directory,
             joblib.dump(model, directory / f'trial_{trial.number}.joblib')
             return score
         except Exception as error:
-            trial.set_user_attr('failure', f'{type(error).__name__}: {error}')
+            record_failure(trial, error)
             raise
 
-    def save_records():
-        records = [{'number': t.number, 'state': t.state.name, 'value': t.value,
-                    'parameters': t.params, 'distributions': {k: optuna.distributions.distribution_to_json(v) for k, v in t.distributions.items()},
-                    'duration_seconds': t.duration.total_seconds() if t.duration else None,
-                    'attributes': t.user_attrs} for t in study.trials]
-        write_json(directory / 'trials.json', records)
-        return records
-
-    try:
-        with threadpool_limits(limits=1):
-            study.optimize(objective, n_trials=trials, n_jobs=1, catch=(ConvergenceError,),
-                           callbacks=[lambda _s, _t: save_records()])
-    finally:
-        records = save_records()
-        complete = sum(t['state'] == 'COMPLETE' for t in records)
-        write_json(directory / 'study_summary.json', {
-            'study_name': study_name, 'attempted': len(records), 'completed': complete,
-            'failed': sum(t['state'] == 'FAIL' for t in records), 'budget': trials,
-            'budget_complete': len(records) == trials, 'elapsed_seconds': perf_counter() - start})
-    if len(records) != trials or not complete:
-        raise RuntimeError('Study incomplete or no converged trials; no test evaluation permitted')
+    with threadpool_limits(limits=1):
+        run_study(study, objective, directory=directory, trials=trials, catch=(ConvergenceError,))
     best = study.best_trial
     model = joblib.load(directory / f'trial_{best.number}.joblib')
     validation_scores = model.predict_proba(x_validation)[:, 1]
@@ -139,7 +113,7 @@ def tune_condition(x_train, y_train, x_validation, y_validation, *, directory,
     selection = {'study_name': study_name, 'trial_number': best.number, 'parameters': best.params,
                  'effective_training_class_weights': best.user_attrs['effective_training_class_weights'],
                  'validation_average_precision': best.value, 'threshold': threshold,
-                 'threshold_source': 'validation', 'threshold_rule': 'max_f1_highest_threshold_on_tie',
+                 'threshold_source': 'validation', 'threshold_rule': THRESHOLD_RULE,
                  'n_iter': model.n_iter_.tolist(), 'max_iter': max_iter, 'tol': tol,
                  'solver': 'lbfgs', 'regularization': 'L2', 'class_weight_bounds': bounds}
     write_json(directory / 'selection.json', selection)

@@ -4,10 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from time import perf_counter
 
 import numpy as np
-import optuna
 import pandas as pd
 from xgboost import XGBClassifier
 from xgboost.core import XGBoostError
@@ -17,6 +15,7 @@ from leakage import class_weight_bounds
 from preprocessing import FittedPreprocessor, transform_histories
 from reproducibility import estimator_seed_parameters
 from sequences import CONDITIONS, create_histories, flatten_histories, tabular_columns
+from studies import THRESHOLD_RULE, check_budget, create_study, record_failure, run_study
 
 PARAMETERS = {'n_estimators', 'max_depth', 'learning_rate', 'min_child_weight',
               'subsample', 'colsample_bytree', 'reg_lambda', 'reg_alpha'}
@@ -142,23 +141,15 @@ def tune_condition(x_train, y_train, x_validation, y_validation, *, directory,
     y_train = validate_targets(y_train, len(x_train))
     y_validation = validate_targets(y_validation, len(x_validation))
     validate_search(search)
-    if isinstance(trials, bool) or not isinstance(trials, int) or trials < 1:
-        raise ValueError('A positive attempted-trial budget is required')
+    check_budget(trials)
     balance = class_weight_bounds(pd.DataFrame({'target': y_train, 'split': 'train'}))
     ratio = balance['negative_to_positive_ratio']
     if ratio < 1:
         raise ValueError('Training negative/positive ratio must be at least 1')
     directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=False)
-    started = perf_counter()
-    study = optuna.create_study(study_name=study_name, direction='maximize',
-        sampler=optuna.samplers.TPESampler(seed=sampler_seed), pruner=optuna.pruners.NopPruner(),
-        storage='sqlite:///' + (directory / 'study.sqlite3').resolve().as_posix())
-    study.set_user_attr('protocol', {
-        'model': 'xgboost', 'objective': 'validation_average_precision',
-        'attempted_trials': trials, 'n_jobs': 1, 'pruning': 'none',
-        'sampler_seed': sampler_seed, 'training_seed': seed, 'search': search,
-        'class_balance': balance, 'scale_pos_weight_bounds': [1., ratio]})
+    study = create_study(directory, study_name=study_name, sampler_seed=sampler_seed, trials=trials,
+                         protocol={'model': 'xgboost', 'training_seed': seed, 'search': search,
+                                   'class_balance': balance, 'scale_pos_weight_bounds': [1., ratio]})
 
     def objective(trial):
         try:
@@ -173,32 +164,10 @@ def tune_condition(x_train, y_train, x_validation, y_validation, *, directory,
             model.save_model(directory / f'trial_{trial.number}.ubj')
             return score
         except Exception as error:
-            trial.set_user_attr('failure', f'{type(error).__name__}: {error}')
+            record_failure(trial, error)
             raise
 
-    def save_records():
-        records = [{
-            'number': t.number, 'state': t.state.name, 'value': t.value,
-            'parameters': t.params, 'attributes': t.user_attrs,
-            'distributions': {k: optuna.distributions.distribution_to_json(v)
-                              for k, v in t.distributions.items()},
-            'duration_seconds': t.duration.total_seconds() if t.duration else None,
-        } for t in study.trials]
-        write_json(directory / 'trials.json', records)
-        return records
-
-    try:
-        study.optimize(objective, n_trials=trials, n_jobs=1, catch=(XGBoostError,),
-                       callbacks=[lambda _s, _t: save_records()])
-    finally:
-        records = save_records()
-        complete = sum(t['state'] == 'COMPLETE' for t in records)
-        write_json(directory / 'study_summary.json', {
-            'study_name': study_name, 'budget': trials, 'attempted': len(records),
-            'completed': complete, 'failed': sum(t['state'] == 'FAIL' for t in records),
-            'budget_complete': len(records) == trials, 'elapsed_seconds': perf_counter() - started})
-    if len(records) != trials or not complete:
-        raise RuntimeError('Incomplete or wholly failed study; no test evaluation permitted')
+    run_study(study, objective, directory=directory, trials=trials, catch=(XGBoostError,))
     best = study.best_trial
     model = build_model(seed=seed)
     model.load_model(directory / f'trial_{best.number}.ubj')
@@ -207,7 +176,7 @@ def tune_condition(x_train, y_train, x_validation, y_validation, *, directory,
         'study_name': study_name, 'trial_number': best.number,
         'parameters': best.user_attrs['effective_parameters'], 'class_balance': balance,
         'validation_average_precision': best.value, 'threshold': threshold,
-        'threshold_source': 'validation', 'threshold_rule': 'max_f1_highest_threshold_on_tie',
+        'threshold_source': 'validation', 'threshold_rule': THRESHOLD_RULE,
         'tree_method': 'hist', 'device': 'cpu', 'n_jobs': 1,
         'training_seed': seed, 'sampler_seed': sampler_seed}
     write_json(directory / 'selection.json', selection)
