@@ -51,6 +51,11 @@ companies and years, and the exact feature schema; it also stores dataset/split
 hashes. Loading it never refits. Treat these artifacts as tied to that dataset
 and split version.
 
+Old artifacts: a schema-2 `preprocessor.json` (plain standardization, before
+#87) still loads, but only for XGBoost's identity transform, so XGBoost runs
+saved earlier keep working with unchanged predictions. LR, MLP and GRU refuse
+it; regenerate it with `scripts/prepare_preprocessing.py`.
+
 ```python
 from preprocessing import FittedPreprocessor, transform_histories
 from sequences import create_histories, flatten_histories

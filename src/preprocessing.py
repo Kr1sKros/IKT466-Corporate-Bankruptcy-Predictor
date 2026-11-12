@@ -283,6 +283,12 @@ def signed_log1p(values: np.ndarray) -> np.ndarray:
     larger than another ends up about 7 units apart instead of 1,000x apart.
     """
     return np.sign(values) * np.log1p(np.abs(values))
+# Schema 2 (before #87) used plain standardization. Its identity path for
+# XGBoost is unchanged, so saved XGBoost runs bundling a schema-2 copy still
+# load; any scaled model refuses a schema-2 record.
+LEGACY_SCHEMA_VERSION = 2
+LEGACY_MODEL_STRATEGIES = {'logistic_regression': 'standard', 'mlp': 'standard',
+                           'gru': 'standard', 'xgboost': 'identity'}
 FIT_POPULATIONS = {'latest_year': 'training_company_final_year',
                    'five_year': 'training_company_last_five_records'}
 
@@ -293,6 +299,9 @@ class FittedPreprocessor:
     Each condition has its own mean/scale of the signed-log1p values, fitted on
     exactly the training records that condition uses. Numeric state is saved as JSON with the
     feature schemas and the fitting company/years.
+
+    A schema-2 record (plain standardization, before #87) is accepted only for
+    XGBoost's unchanged identity transform; LR/MLP/GRU refuse it.
     """
 
     def __init__(self, record):
@@ -303,11 +312,15 @@ class FittedPreprocessor:
         from sequences import step_columns, tabular_columns
         from validation import FEATURE_COLUMNS
         r = self.record
-        if r['schema_version'] != 3 or r['strategy'] != SCALED:
+        if (r['schema_version'], r['strategy']) == (3, SCALED):
+            expected_strategies = MODEL_STRATEGIES
+        elif (r['schema_version'], r['strategy']) == (LEGACY_SCHEMA_VERSION, 'standard'):
+            expected_strategies = LEGACY_MODEL_STRATEGIES
+        else:
             raise ValueError("Unsupported preprocessing contract")
         if r['financial_columns'] != list(FEATURE_COLUMNS):
             raise ValueError("Saved financial feature order differs")
-        if r['model_strategies'] != MODEL_STRATEGIES:
+        if r['model_strategies'] != expected_strategies:
             raise ValueError("Saved model strategies differ")
         if set(r['conditions']) != set(FIT_POPULATIONS):
             raise ValueError("Saved conditions differ")
@@ -321,11 +334,19 @@ class FittedPreprocessor:
                     or not np.isfinite(scale).all() or (scale <= 0).any()):
                 raise ValueError("Invalid saved standardization parameters")
 
+    @property
+    def is_legacy(self) -> bool:
+        """True for a schema-2 record: usable for XGBoost's identity path only."""
+        return self.record['schema_version'] == LEGACY_SCHEMA_VERSION
+
     def transform(self, features: pd.DataFrame, *, model: str, condition: str) -> np.ndarray:
         self._validate_record()
         _check_condition(condition)
         if model not in MODELS:
             raise ValueError("Unknown model")
+        if self.is_legacy and MODEL_STRATEGIES[model] != 'identity':
+            raise ValueError(f"Schema-{LEGACY_SCHEMA_VERSION} preprocessor (before #87) only supports "
+                             "XGBoost's identity transform; regenerate it with scripts/prepare_preprocessing.py")
         values = _financial_values(features)
         if MODEL_STRATEGIES[model] == SCALED:
             fit = self.record['conditions'][condition]

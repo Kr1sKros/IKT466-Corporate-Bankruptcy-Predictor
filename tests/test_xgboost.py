@@ -72,6 +72,44 @@ def test_fit_identity_inputs_and_reload(panel, tmp_path, condition, width):
     assert len(before) == len(companies)
 
 
+def legacy_v2_record(data, companies):
+    """A schema-2 preprocessor as written before #87: plain standardization."""
+    from preprocessing import LEGACY_MODEL_STRATEGIES, training_fit_rows
+    record = json.loads(json.dumps(fit_preprocessor(data, companies).record))
+    record.update(schema_version=2, strategy='standard', model_strategies=dict(LEGACY_MODEL_STRATEGIES))
+    for condition, fit in record['conditions'].items():
+        rows = training_fit_rows(data, companies, condition=condition)[FEATURE_COLUMNS].to_numpy(float)
+        fit['mean'], fit['scale'] = rows.mean(0).tolist(), np.where(rows.std(0) > 0, rows.std(0), 1.).tolist()
+    return record
+
+
+@pytest.mark.parametrize('condition', ['latest_year', 'five_year'])
+def test_saved_xgboost_run_with_schema_2_preprocessor_still_loads(panel, tmp_path, condition):
+    """Runs saved before #87 bundle a schema-2 preprocessor.json; XGBoost inputs are unchanged."""
+    from preprocessing import FittedPreprocessor
+    data, companies = panel
+    x, meta = features(panel, condition)
+    model = xgb.train_model(xgb.build_model(hyperparameters={'n_estimators': 5}), x, meta.target)
+    current = xgb.XGBoostPipeline(condition, fit_preprocessor(data, companies), model, .4)
+    current.save(tmp_path)
+    (tmp_path / 'preprocessor.json').write_text(json.dumps(legacy_v2_record(data, companies)))
+    loaded = xgb.XGBoostPipeline.load(tmp_path)
+    assert loaded.preprocessor.is_legacy
+    pd.testing.assert_frame_equal(loaded.predict(data, companies.company_name),
+                                  current.predict(data, companies.company_name))
+    # The same old record must not feed any scaled model.
+    histories = create_histories(data, condition=condition)
+    for model_name in ('logistic_regression', 'mlp', 'gru'):
+        with pytest.raises(ValueError, match='only supports'):
+            transform_histories(histories, loaded.preprocessor, model=model_name)
+    # Other old or mixed contracts stay rejected.
+    for change in ({'schema_version': 1}, {'strategy': 'signed_log1p_standard'},
+                   {'model_strategies': {'logistic_regression': 'signed_log1p_standard', 'mlp': 'standard',
+                                         'gru': 'standard', 'xgboost': 'identity'}}):
+        with pytest.raises(ValueError):
+            FittedPreprocessor({**legacy_v2_record(data, companies), **change})
+
+
 @pytest.mark.parametrize('bad', [{'n_jobs': 4}, {'objective': 'reg:squarederror'}, {'device': 'cuda'},
                                {'random_state': 4}, {'scale_pos_weight': 0}])
 def test_protected_settings(bad):
