@@ -44,7 +44,7 @@ Each of the eight studies runs as its own process; `--parallel N` runs N at the
 same time. Every study is single-threaded, CPU-only and seeded, so the results
 are identical for any N; only the wall-clock time changes. Give each parallel
 study one free CPU core. With 8 cores the run takes about as long as the slowest
-study (GRU, roughly 1.5 h); with 4 cores about twice that. One study can also be
+study (a GRU study, roughly 1.5-3 h depending on the CPU); with 4 cores about twice that. One study can also be
 run on its own, e.g. `python scripts/train_gru.py --csv ... --output ... --conditions five_year`.
 
 The output directory must not exist; studies are never resumed or overwritten.
@@ -61,11 +61,15 @@ CSV=~/.cache/kagglehub/datasets/utkarshx27/american-companies-bankruptcy-predict
 python scripts/prepare_data.py --csv "$CSV"            # recreates the split; fails if checksums differ
 python scripts/prepare_preprocessing.py --csv "$CSV"
 python -m pytest -q
-nohup python scripts/run_studies.py --csv "$CSV" --output results/studies/main --parallel 8 > studies.log 2>&1 &
+tmux new -s studies                   # keeps the run alive if the connection drops
+python scripts/run_studies.py --csv "$CSV" --output results/studies/main --parallel 8 2>&1 | tee studies.log
 ```
 
-`nohup` keeps the run alive if the terminal or connection closes. Progress is in
-`results/studies/main/<model>__<condition>.log` and each study's `trials.json`.
+The run prints a progress table every 30 seconds (`--progress-every`): trials
+done out of 100, failed trials, best validation AP so far, elapsed time and an
+estimate of the time left per study, plus a line whenever a study finishes.
+Detach from tmux with `Ctrl+b` then `d`; reattach with `tmux attach -t studies`.
+Each study's own log is `results/studies/main/<model>__<condition>.log`.
 
 **No GPU needed.** The networks and data are small (at most 256 units, about 6,300
 training companies, sequences of 1-5 years), so a GPU spends more time moving

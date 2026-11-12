@@ -9,12 +9,15 @@ all eight studies are complete; it is the input for the held-out test
 evaluation (#60/#62).
 """
 import argparse
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
+from datetime import datetime
 import json
 from pathlib import Path
 import subprocess
 import sys
 from time import perf_counter
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNERS = {'logistic_regression': 'train_logistic.py', 'xgboost': 'train_xgboost.py',
@@ -28,8 +31,10 @@ def job_name(model, condition):
     return f'{model}__{condition}'
 
 
-def run_job(job, csv, config, output, preprocessor):
+def run_job(job, csv, config, output, preprocessor, started_at=None):
     model, condition = job
+    if started_at is not None:
+        started_at[job] = perf_counter()
     command = [sys.executable, str(ROOT / 'scripts' / RUNNERS[model]), '--csv', str(csv),
                '--config', str(config), '--output', str(output / job_name(*job)),
                '--conditions', condition]
@@ -39,6 +44,39 @@ def run_job(job, csv, config, output, preprocessor):
     with open(output / f'{job_name(*job)}.log', 'w', encoding='utf-8') as log:
         code = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT).returncode
     return job, code, perf_counter() - started
+
+
+def _clock(seconds):
+    if seconds is None:
+        return '-'
+    seconds = int(seconds)
+    return f'{seconds // 3600}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}'
+
+
+def progress_table(output, budget, started_at, finished, now):
+    """One line per study: trials done, failures, best validation AP, elapsed, ETA."""
+    lines = [f'{"study":32s} {"trials":>9s} {"failed":>6s} {"best AP":>8s} {"elapsed":>8s} {"ETA":>8s}  status']
+    for job in JOBS:
+        name = job_name(*job)
+        path = output / name / job[1] / 'trials.json'
+        try:
+            records = json.loads(path.read_text(encoding='utf-8')) if path.exists() else []
+        except (OSError, ValueError):  # being rewritten right now
+            records = []
+        done = len(records)
+        failed = sum(r['state'] == 'FAIL' for r in records)
+        values = [r['value'] for r in records if r['state'] == 'COMPLETE']
+        best = f'{max(values):.4f}' if values else '-'
+        start = started_at.get(job)
+        elapsed = (finished[job][1] if job in finished else now - start) if start is not None else None
+        eta = elapsed / done * (budget - done) if done and job not in finished else None
+        if job in finished:
+            status = 'done' if finished[job][0] == 0 else f'FAILED (exit {finished[job][0]}, see {name}.log)'
+        else:
+            status = 'running' if start is not None else 'waiting'
+        lines.append(f'{name:32s} {done:>4d}/{budget:<4d} {failed:>6d} {best:>8s} '
+                     f'{_clock(elapsed):>8s} {_clock(eta):>8s}  {status}')
+    return '\n'.join(lines)
 
 
 def collect(output):
@@ -70,6 +108,7 @@ def main(argv=None):
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--preprocessor', type=Path)
     parser.add_argument('--parallel', type=int, default=1, help='Studies at once (1-8), one CPU core each')
+    parser.add_argument('--progress-every', type=float, default=30., help='Seconds between progress tables')
     args = parser.parse_args(argv)
     if not 1 <= args.parallel <= len(JOBS):
         raise ValueError('--parallel must be between 1 and 8')
@@ -78,10 +117,27 @@ def main(argv=None):
         raise FileExistsError('Choose a new output directory; existing studies are never overwritten')
     output.mkdir(parents=True)
     preprocessor = args.preprocessor.resolve() if args.preprocessor else None
+    budget = yaml.safe_load(args.config.read_text(encoding='utf-8'))['study_plan']['tuning']['attempted_trials_per_study']
+    print(f'Running {len(JOBS)} studies x {budget} trials, {args.parallel} at a time. Output: {output}', flush=True)
     started = perf_counter()
+    started_at, finished, results = {}, {}, []
     with ThreadPoolExecutor(max_workers=args.parallel) as pool:
-        results = list(pool.map(lambda job: run_job(job, args.csv.resolve(), args.config.resolve(),
-                                                    output, preprocessor), JOBS))
+        futures = {pool.submit(run_job, job, args.csv.resolve(), args.config.resolve(), output,
+                               preprocessor, started_at): job for job in JOBS}
+        pending = set(futures)
+        while pending:
+            done, pending = wait(pending, timeout=args.progress_every)
+            for future in done:
+                job, code, seconds = future.result()
+                finished[job] = (code, seconds)
+                results.append((job, code, seconds))
+                print(f'[{datetime.now():%H:%M:%S}] {job_name(*job)} '
+                      f'{"finished" if code == 0 else f"FAILED (exit {code})"} after {_clock(seconds)}',
+                      flush=True)
+            print(f'\n[{datetime.now():%H:%M:%S}] {len(finished)}/{len(JOBS)} studies finished, '
+                  f'total {_clock(perf_counter() - started)}', flush=True)
+            print(progress_table(output, budget, started_at, finished, perf_counter()), flush=True)
+    results.sort(key=lambda r: JOBS.index(r[0]))
     runs = {job_name(*job): {'exit_code': code, 'seconds': seconds, 'log': f'{job_name(*job)}.log'}
             for job, code, seconds in results}
     studies, missing = collect(output)
