@@ -37,7 +37,8 @@ from preprocessing import (MODEL_STRATEGIES, FittedPreprocessor, file_sha256, lo
                            split_paths, transform_histories)
 from reproducibility import configure_reproducibility, file_provenance, write_run_metadata
 from sequences import CONDITIONS, create_histories, flatten_histories, step_columns, tabular_columns
-from studies import THRESHOLD_RULE, create_study, record_failure, run_study, write_json
+from studies import (THRESHOLD_RULE, create_study, record_failure, run_study, select_conditions,
+                     write_json)
 
 MODULES = {'mlp': mlp_model, 'gru': gru_model}
 TRAINING_RULES = {'optimizer': 'adam', 'selection_metric': 'validation_average_precision',
@@ -192,9 +193,10 @@ def tune_condition(model_name, train, validation, *, directory, study_name, seed
     return model, selection
 
 
-def run(model_name, csv, config_path, output, preprocessor_path=None):
-    """Both conditions for one neural model, validation only; test is deferred."""
+def run(model_name, csv, config_path, output, preprocessor_path=None, conditions=None):
+    """One neural model's studies (default both conditions), validation only; test is deferred."""
     _module(model_name)
+    conditions = select_conditions(conditions)
     csv, config_path, output = Path(csv).resolve(), Path(config_path).resolve(), Path(output).resolve()
     config = yaml.safe_load(config_path.read_text(encoding='utf-8'))
     check_study_plan(config)
@@ -234,7 +236,7 @@ def run(model_name, csv, config_path, output, preprocessor_path=None):
     tuning = config['study_plan']['tuning']
     started = perf_counter()
     selections = {}
-    for condition in CONDITIONS:
+    for condition in conditions:
         histories = {}
         for partition in ('train', 'validation'):
             ids = companies.loc[companies['split'].eq(partition), 'company_name']

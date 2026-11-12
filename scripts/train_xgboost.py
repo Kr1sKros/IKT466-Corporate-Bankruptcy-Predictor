@@ -13,10 +13,11 @@ from models.xgboost_model import XGBoostPipeline, tune_condition, validate_searc
 from preprocessing import (MODEL_STRATEGIES, FittedPreprocessor, file_sha256, load_splits,
                            split_paths, transform_histories)
 from reproducibility import configure_reproducibility, file_provenance, write_run_metadata
-from sequences import CONDITIONS, create_histories, flatten_histories
+from sequences import create_histories, flatten_histories
+from studies import add_conditions_argument, select_conditions
 
 
-def run(csv, config_path, output, preprocessor_path=None):
+def run(csv, config_path, output, preprocessor_path=None, conditions=None):
     csv, config_path, output = Path(csv).resolve(), Path(config_path).resolve(), Path(output).resolve()
     config = yaml.safe_load(config_path.read_text(encoding='utf-8'))
     check_study_plan(config)
@@ -58,7 +59,7 @@ def run(csv, config_path, output, preprocessor_path=None):
     tuning = config['study_plan']['tuning']
     started = perf_counter()
     selections = {}
-    for condition in CONDITIONS:
+    for condition in select_conditions(conditions):
         partitions = {}
         for partition in ('train', 'validation'):
             ids = companies.loc[companies['split'].eq(partition), 'company_name']
@@ -109,8 +110,9 @@ def main():
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--preprocessor', type=Path,
                         help='Shared #46 artifact (default: results/models/preprocessor.json in the config repository)')
+    add_conditions_argument(parser)
     args = parser.parse_args()
-    result = run(args.csv, args.config, args.output, args.preprocessor)
+    result = run(args.csv, args.config, args.output, args.preprocessor, args.conditions)
     print({name: selection['validation_average_precision'] for name, selection in result['selections'].items()})
 
 

@@ -196,7 +196,7 @@ def test_all_eight_studies_share_one_protocol_and_freeze_together(panel, tmp_pat
     csv, config, preprocessor = prepare_run(panel, tmp_path, trials=2)
     output = tmp_path / 'all'
     orchestrator.main(['--csv', str(csv), '--config', str(config), '--output', str(output),
-                       '--preprocessor', str(preprocessor), '--parallel', '4'])
+                       '--preprocessor', str(preprocessor), '--parallel', '8'])
     frozen = json.loads((output / 'frozen_studies.json').read_text())
     assert frozen['status'] == 'all_eight_frozen' and not frozen['missing']
     assert {(m, c) for m, s in frozen['studies'].items() for c in s} == {
@@ -208,9 +208,22 @@ def test_all_eight_studies_share_one_protocol_and_freeze_together(panel, tmp_pat
             assert study['attempted'] == study['completed'] == 2 and study['threshold_source'] == 'validation'
             names.add(study['study_name'])
             loaded = optuna.load_study(study_name=study['study_name'],
-                                       storage='sqlite:///' + str(output / model / condition / 'study.sqlite3'))
+                                       storage='sqlite:///' + str(output / study['directory'] / 'study.sqlite3'))
             protocols.append({k: loaded.user_attrs['protocol'][k] for k in common})
     assert len(names) == 8 and all(p == protocols[0] for p in protocols)
     assert not list(output.rglob('test_*'))
     with pytest.raises(FileExistsError):
         orchestrator.main(['--csv', str(csv), '--config', str(config), '--output', str(output)])
+
+
+def test_runner_can_study_one_condition(panel, tmp_path):
+    from studies import select_conditions
+    assert select_conditions(None) == ('latest_year', 'five_year')
+    assert select_conditions(['five_year', 'latest_year']) == ('latest_year', 'five_year')
+    for bad in ([], ['five_year', 'five_year'], ['all_history']):
+        with pytest.raises(ValueError):
+            select_conditions(bad)
+    csv, config, preprocessor = prepare_run(panel, tmp_path)
+    report = ns.run('mlp', csv, config, tmp_path / 'one', preprocessor, conditions=['five_year'])
+    assert set(report['selections']) == {'five_year'}
+    assert not (tmp_path / 'one' / 'latest_year').exists()

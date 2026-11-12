@@ -96,5 +96,26 @@ def run_study(study: optuna.Study, objective: Callable[[optuna.Trial], float], *
     return records
 
 
+def select_conditions(conditions=None) -> tuple[str, ...]:
+    """Conditions a runner should study (default both), in the fixed order.
+
+    Running one condition per process lets all eight studies run side by side;
+    each study is unchanged by this, it is still seeded and single-threaded.
+    """
+    from sequences import CONDITIONS
+    if conditions is None:
+        return CONDITIONS
+    chosen = set(conditions)
+    if not chosen or not chosen <= set(CONDITIONS) or len(chosen) != len(list(conditions)):
+        raise ValueError(f'Conditions must be distinct values from {CONDITIONS}')
+    return tuple(c for c in CONDITIONS if c in chosen)
+
+
+def add_conditions_argument(parser) -> None:
+    from sequences import CONDITIONS
+    parser.add_argument('--conditions', nargs='+', choices=CONDITIONS,
+                        help='Run only these conditions (default: both)')
+
+
 def record_failure(trial: optuna.Trial, error: BaseException) -> None:
     trial.set_user_attr('failure', f'{type(error).__name__}: {error}')
