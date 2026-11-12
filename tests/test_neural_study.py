@@ -215,6 +215,24 @@ def test_all_eight_studies_share_one_protocol_and_freeze_together(panel, tmp_pat
     with pytest.raises(FileExistsError):
         orchestrator.main(['--csv', str(csv), '--config', str(config), '--output', str(output)])
 
+    # Held-out test evaluation of the frozen studies (#62): every test company, validation thresholds.
+    spec = importlib.util.spec_from_file_location('evaluate_test', ROOT / 'scripts/evaluate_test.py')
+    evaluate = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(evaluate)
+    destination = tmp_path / 'test_eval'
+    evaluate.main(['--studies', str(output), '--csv', str(csv), '--config', str(config),
+                   '--output', str(destination)])
+    summary = pd.read_csv(destination / 'test_summary.csv')
+    assert len(summary) == 8 and summary.average_precision.between(0, 1).all()
+    test_ids = set(panel[1].loc[panel[1].split.eq('test'), 'company_name'])
+    for row in summary.itertuples():
+        frame = pd.read_csv(destination / 'predictions' / f'{row.model}__{row.condition}.csv')
+        assert set(frame.company_name) == test_ids
+        assert row.threshold == pytest.approx(frozen['studies'][row.model][row.condition]['threshold'])
+    with pytest.raises(FileExistsError):
+        evaluate.main(['--studies', str(output), '--csv', str(csv), '--config', str(config),
+                       '--output', str(destination)])
+
 
 def test_runner_can_study_one_condition(panel, tmp_path):
     from studies import select_conditions
