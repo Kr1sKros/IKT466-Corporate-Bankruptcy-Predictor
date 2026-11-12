@@ -27,6 +27,20 @@ CONDITIONS = ('latest_year', 'five_year')
 JOBS = [(m, c) for m in ('gru', 'mlp', 'xgboost', 'logistic_regression') for c in ('five_year', 'latest_year')]
 
 
+THREAD_VARIABLES = ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS',
+                    'NUMEXPR_NUM_THREADS', 'VECLIB_MAXIMUM_THREADS')
+
+
+def single_thread_env():
+    """Each study uses one thread for every numeric library.
+
+    Containers often show the host's cores (e.g. 96) while allowing only a few;
+    libraries would then start dozens of threads per study and slow everything.
+    """
+    import os
+    return {**os.environ, **{name: '1' for name in THREAD_VARIABLES}}
+
+
 def job_name(model, condition):
     return f'{model}__{condition}'
 
@@ -42,7 +56,7 @@ def run_job(job, csv, config, output, preprocessor, started_at=None):
         command += ['--preprocessor', str(preprocessor)]
     started = perf_counter()
     with open(output / f'{job_name(*job)}.log', 'w', encoding='utf-8') as log:
-        code = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT).returncode
+        code = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, env=single_thread_env()).returncode
     return job, code, perf_counter() - started
 
 
