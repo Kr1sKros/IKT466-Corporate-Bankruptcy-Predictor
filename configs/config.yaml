@@ -81,16 +81,18 @@ split:
 
 preprocessing:
   missing_value_strategy: error  # Audited financial cells are complete; no imputation.
-  scaling_strategy: standard  # Fixed; never selected by Optuna.
+  # Fixed; never selected by Optuna. signed log1p = sign(x) * log(1 + |x|) before
+  # standardizing, so dollar-scale outliers do not dominate LR/MLP/GRU (#87).
+  scaling_strategy: signed_log1p_standard
   fit_population:  # Separate scaler per condition, fitted on the rows it uses.
     latest_year: training_company_final_year
     five_year: training_company_last_five_records
   reuse_across_input_conditions: false
   model_scaling:
-    logistic_regression: standard
-    xgboost: identity
-    mlp: standard
-    gru: standard
+    logistic_regression: signed_log1p_standard
+    xgboost: identity  # Trees only use value order; log would change nothing.
+    mlp: signed_log1p_standard
+    gru: signed_log1p_standard
   relative_offsets: unchanged
   padding: zero_after_transform
   fit_on_training_only: true

@@ -12,7 +12,7 @@ from preprocessing import (FIT_POPULATIONS, MODEL_STRATEGIES, file_sha256,
 from validation import FEATURE_COLUMNS
 
 EXPECTED_POLICY = {
-    'scaling_strategy': 'standard', 'missing_value_strategy': 'error',
+    'scaling_strategy': 'signed_log1p_standard', 'missing_value_strategy': 'error',
     'fit_population': FIT_POPULATIONS,
     'reuse_across_input_conditions': False, 'fit_on_training_only': True,
     'model_scaling': MODEL_STRATEGIES,
@@ -21,7 +21,11 @@ EXPECTED_POLICY = {
 
 
 def describe(values: pd.DataFrame, standardized: np.ndarray) -> dict:
-    """Per-feature distribution of the fitting rows (training data only)."""
+    """Per-feature distribution of the fitting rows (training data only).
+
+    Raw statistics describe the dollar values; the ``transformed_*`` fields
+    describe what LR/MLP/GRU receive (signed log1p, then standardized).
+    """
     diagnostics = {}
     for name in FEATURE_COLUMNS:
         col = values[name]
@@ -37,6 +41,8 @@ def describe(values: pd.DataFrame, standardized: np.ndarray) -> dict:
             'skewness': skew if skew is not None and np.isfinite(skew) else None,
             'outside_1_5_iqr_fraction': float(((col < q1 - 1.5 * iqr) | (col > q3 + 1.5 * iqr)).mean()),
             'max_absolute_standardized': float(np.abs(standardized[:, FEATURE_COLUMNS.index(name)]).max()),
+            'transformed_skewness': float(pd.Series(standardized[:, FEATURE_COLUMNS.index(name)]).skew())
+            if len(col) >= 3 and col.nunique() > 1 else None,
         }
     return diagnostics
 
@@ -77,7 +83,7 @@ def main():
             'features': describe(values, standardized),
         }
     report = {'conditions': conditions, **provenance,
-              'policy': 'fixed StandardScaler per condition for LR/MLP/GRU; identity for XGBoost; no Optuna selection'}
+              'policy': 'fixed signed log1p + StandardScaler per condition for LR/MLP/GRU; identity for XGBoost; no Optuna selection'}
     report_text = json.dumps(report, indent=2, allow_nan=False) + '\n'
     fitted.save(args.output)
     args.report.parent.mkdir(parents=True, exist_ok=True)

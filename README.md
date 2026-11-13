@@ -420,10 +420,10 @@ same companies, anchors and targets.
   equals the corresponding GRU step.
 - **Latest year adds nothing else:** no history length or temporal fields. A
   one-record company has the same financial values in both conditions.
-- **Padding never enters fitted preprocessing:** scaling (#46) uses one
-  StandardScaler per condition, fitted on the real training records of that
-  condition only; padded slots are set back to 0 afterwards. XGBoost is not
-  scaled. Details: [docs/preprocessing.md](docs/preprocessing.md).
+- **Padding never enters fitted preprocessing:** scaling (#46) uses signed
+  log1p followed by one StandardScaler per condition, fitted on the real
+  training records of that condition only; padded slots are set back to 0
+  afterwards. XGBoost is not scaled. Details: [docs/preprocessing.md](docs/preprocessing.md).
 - **Schema checks:** raw ID/label/year are never predictors, and the derived
   columns are validated against their exact expected order
   (`validate_tabular_columns`).

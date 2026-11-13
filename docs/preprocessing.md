@@ -1,7 +1,15 @@
 # Fixed per-condition preprocessing from training data (#46)
 
-Decision: StandardScaler for Logistic Regression, MLP and GRU; identity for
-XGBoost. This choice is fixed and must not be included in an Optuna search.
+Decision: signed log1p followed by StandardScaler for Logistic Regression, MLP
+and GRU; identity for XGBoost. This choice is fixed and must not be included in
+an Optuna search.
+
+signed log1p is `sign(x) * log(1 + |x|)`. It keeps order and sign, maps 0 to 0,
+and shrinks the dollar-scale tails: a company 1,000 times larger than another
+ends up about 7 units apart instead of 1,000 times apart. XGBoost splits only on
+value order, so the log step would not change it and it keeps the raw values.
+Why this was added on top of plain standardization (#87): see
+[Heavy-tailed inputs](#heavy-tailed-inputs-87) below.
 
 Each input condition gets **its own scaler, fitted on exactly the training
 records that condition uses**:
@@ -13,11 +21,12 @@ records that condition uses**:
 
 One scaler per condition is shared by all its timesteps/slots, so X1 at r0 and X1
 at r4 use the same mean and scale and year-to-year changes stay comparable.
+The scaler's mean and scale are those of the signed-log1p training values.
 Training years before the five-year window and all validation/test financial
 values never contribute to a fit. Constant columns use scale=1, following
 StandardScaler.
 
-No imputation, clipping or nonlinear transformation is performed. Genuine
+No imputation or clipping is performed; signed log1p is the only nonlinear step. Genuine
 missing/nonfinite financial cells cause an error. Padding is not a financial
 observation: transform only real steps, then fill padded steps with zero.
 Offsets in years before the anchor remain unchanged; flattening creates the
@@ -41,6 +50,11 @@ Per condition, the transform stores mean, scale, variance, the fitting
 companies and years, and the exact feature schema; it also stores dataset/split
 hashes. Loading it never refits. Treat these artifacts as tied to that dataset
 and split version.
+
+Old artifacts: a schema-2 `preprocessor.json` (plain standardization, before
+#87) still loads, but only for XGBoost's identity transform, so XGBoost runs
+saved earlier keep working with unchanged predictions. LR, MLP and GRU refuse
+it; regenerate it with `scripts/prepare_preprocessing.py`.
 
 ```python
 from preprocessing import FittedPreprocessor, transform_histories
@@ -74,14 +88,15 @@ fitting population.
 | Fitting rows | 6,279 | 25,846 |
 | Skewness range | 11.86 (X15) – 35.35 (X5) | 11.58 (X15) – 29.77 (X5) |
 | Share outside 1.5-IQR fences | 14% – 25% | 14% – 25% |
-| Largest absolute standardized value | 55.51 (X8) | 60.52 (X8) |
+| Largest absolute standardized value, plain z-score (before #87) | 55.51 (X8) | 60.52 (X8) |
+| Skewness range after signed log1p + standardization | -0.59 – 0.82 | -0.62 – 0.76 |
+| Largest absolute value after signed log1p + standardization | 4.76 (X18) | 4.85 (X18) |
 
 All 18 distributions are strongly right-skewed in both populations. IQR flags are
 descriptive, not proof of erroneous records and not grounds for deleting
-companies. Standardization changes scale; it neither removes skewness nor bounds
-extremes. This is a limitation to monitor during training, not evidence that an
-alternative scaler has better predictive performance. No validation/test
-distributions or model scores were used to select or change preprocessing.
+companies. Plain standardization changes scale but neither removes skewness nor
+bounds extremes; the signed log1p step does both (rows above). The step was
+chosen with validation scores only (#87); no test data was used.
 
 The generated JSON includes, per condition, per-feature quantiles, extrema, mean,
 population standard deviation, skewness, IQR flags and maximum absolute
@@ -97,3 +112,33 @@ features, exact save/load equivalence, column-order validation and rejection of
 missing real financial cells. Training runners must consume this shared path
 when implemented; this work does not claim that any real model training or
 Optuna studies have been executed.
+
+## Heavy-tailed inputs (#87)
+
+The dollar-scale features are extremely right-skewed. With plain standardization
+almost every company sits near 0 (median |z| 0.15) while a few giants reach
+|z| 55-97, so weight-based models (LR, MLP, GRU) are pulled around by a handful
+of companies. Trees (XGBoost) are unaffected. Signed log1p before standardizing
+fixes this without anything extra to fit.
+
+Validation AP on the seed-42 split (test never used). Ranges are over 5 training
+seeds, or 5 sampler seeds for LR; full tables and settings are in #87.
+
+| latest_year | Plain standard | signed log1p + standard |
+|---|---|---|
+| LR, 20-trial Optuna | 0.253 - 0.256 | 0.241 - 0.244 |
+| MLP, fixed settings | 0.278 - 0.307 | 0.336 - 0.375 |
+| MLP, 20-trial Optuna | 0.338 | 0.373 |
+| GRU, fixed settings | 0.270 - 0.277 | 0.350 - 0.369 |
+| GRU, 20-trial Optuna | 0.288 | 0.382 |
+| XGBoost, fixed settings | 0.315 - 0.346 | identical |
+
+| five_year, one run each (seed 42) | Plain standard | signed log1p + standard |
+|---|---|---|
+| LR, 20-trial Optuna | 0.298 | 0.387 |
+| MLP, fixed settings | 0.380 | 0.506 |
+| GRU, fixed settings | 0.426 | 0.443 |
+
+LR loses slightly on latest_year but gains on five_year; one shared policy for the
+three scaled models is kept and this trade-off is accepted. XGBoost stays on raw
+values.
