@@ -19,7 +19,7 @@ Open tasks with a due date on or before today appear in **Due today or overdue**
 Tasks without a deadline are also included there (0 currently).
 Deadlines use exact date labels such as `due:2026-11-09`.
 
-Updated 2026-11-13 (Europe/Oslo). Refreshes when issues change and daily.
+Updated 2026-11-14 (Europe/Oslo). Refreshes when issues change and daily.
 Plan: data preparation by **15 Nov**, model training by **16 Nov**, experiments by
 **20 Nov**, discussion and conclusions by **21 Nov**, final review by **22 Nov**.
 <!-- task-dashboard:end -->
